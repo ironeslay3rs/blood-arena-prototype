@@ -24,3 +24,52 @@ body {
   color: var(--foreground);
   font-family: var(--font-geist-sans), system-ui, sans-serif;
 }
+
+/* Lightweight combat feedback (Blood Arena UI only) */
+@keyframes combat-damage-rise {
+  0% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-28px) scale(1.06);
+  }
+}
+
+.combat-damage-float {
+  animation: combat-damage-rise 0.85s ease-out forwards;
+}
+
+@keyframes combat-caption-pop {
+  0% {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  20% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.combat-float-caption {
+  animation: combat-caption-pop 0.35s ease-out forwards;
+}
+
+@keyframes combat-attack-pulse-kf {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgb(250 204 21 / 0.45);
+  }
+  50% {
+    box-shadow: 0 0 0 6px rgb(250 204 21 / 0);
+  }
+}
+
+.combat-attack-pulse {
+  animation: combat-attack-pulse-kf 0.22s ease-out 1;
+}

@@ -112,10 +112,14 @@ export interface FighterState {
   openingStrikeConsumed: boolean;
 }
 
+/** `tempo`: fight rhythm / system bonus lines — rendered apart from damage text. */
+export type CombatLogEntryKind = "tempo";
+
 export interface CombatLogEntry {
   id: string;
   atMs: number;
   message: string;
+  kind?: CombatLogEntryKind;
 }
 
 /** Outcome of the most recently finished round (cleared on reset / new match spawn). */
@@ -218,6 +222,15 @@ export interface ArenaState {
   /** Cleared each spawn; applied to {@link FighterProfile} when the match ends. */
   matchPlayerDamageDealt: number;
   matchPlayerDamageTaken: number;
+  /**
+   * Run-wide combat rhythm: +1 on win, −1 on loss, clamped [−3, 3].
+   * High tempo helps Bio damage; low tempo helps Pure heals.
+   */
+  combatTempo: number;
+  /** Match-local: throttle duplicate tempo-bonus log lines (ms, exclusive). */
+  tempoLogSilenceBioUntilMs: number;
+  tempoLogSilencePureHealUntilMs: number;
+  tempoLogSilenceMechaControlUntilMs: number;
 }
 
 export interface PlayerInput {

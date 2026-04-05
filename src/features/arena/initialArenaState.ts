@@ -40,6 +40,7 @@ export type ArenaProgressCarry = {
   matchOrdinal?: number;
   winStreak?: number;
   fighterProfiles?: Record<string, FighterProfile>;
+  combatTempo?: number;
 };
 
 function playerMaxWithPenalty(cardMax: number, pendingPenalty: number): number {
@@ -134,6 +135,10 @@ export function createInitialArenaState(
       : {},
     matchPlayerDamageDealt: 0,
     matchPlayerDamageTaken: 0,
+    combatTempo: carry?.combatTempo ?? 0,
+    tempoLogSilenceBioUntilMs: 0,
+    tempoLogSilencePureHealUntilMs: 0,
+    tempoLogSilenceMechaControlUntilMs: 0,
   };
 }
 
@@ -156,6 +161,7 @@ export function resetArenaWithPlayerClass(
       matchOrdinal: state.matchOrdinal,
       winStreak: state.winStreak,
       fighterProfiles: state.fighterProfiles,
+      combatTempo: state.combatTempo,
     },
   );
 }
@@ -173,5 +179,6 @@ export function rematchKeepingRoster(state: ArenaState): ArenaState {
     matchOrdinal: state.matchOrdinal,
     winStreak: state.winStreak,
     fighterProfiles: state.fighterProfiles,
+    combatTempo: state.combatTempo,
   });
 }

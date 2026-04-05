@@ -10,6 +10,7 @@ import { FighterPanel } from "./FighterPanel";
 import { FighterProfilePanel } from "./FighterProfilePanel";
 import { MatchHud } from "./MatchHud";
 import { SkillBar } from "./SkillBar";
+import { useCombatFeedback } from "./useCombatFeedback";
 
 const PLAYER_FIGHTER_OPTIONS: { label: string; fighterId: FighterId }[] = [
   { label: "Werewolf", fighterId: "feral-hound" },
@@ -27,6 +28,7 @@ export function ArenaScreen() {
   const controlsLocked = player.hp <= 0 || state.winner != null;
   const playerCareer = state.fighterProgress[player.fighterId];
   const spendUnlocked = canSpendArenaPrep(state);
+  const combatFx = useCombatFeedback(state.log, state.fighters);
 
   return (
     <div className="mx-auto flex min-h-0 w-full max-w-4xl flex-1 flex-col gap-6 px-4 py-8">
@@ -41,6 +43,7 @@ export function ArenaScreen() {
         spendUnlocked={spendUnlocked}
         activeFighterName={state.playerFighter.name}
         activeFighterCareer={playerCareer}
+        combatTempo={state.combatTempo}
         onResetMatch={actions.resetMatch}
         onReinforceBody={actions.reinforceBody}
         onBribeHandler={actions.bribeHandler}
@@ -75,11 +78,21 @@ export function ArenaScreen() {
         }
       />
 
-      <ArenaStage fighters={state.fighters} />
+      <ArenaStage
+        fighters={state.fighters}
+        pulseOpponent={combatFx.arena.pulseOpponent}
+      />
 
       <div className="grid gap-4 sm:grid-cols-2">
-        <FighterPanel fighter={player} career={playerCareer} />
-        <FighterPanel fighter={opponent} />
+        <FighterPanel
+          fighter={player}
+          career={playerCareer}
+          combatFeedback={combatFx.playerCard}
+        />
+        <FighterPanel
+          fighter={opponent}
+          combatFeedback={combatFx.opponentCard}
+        />
       </div>
 
       <SkillBar

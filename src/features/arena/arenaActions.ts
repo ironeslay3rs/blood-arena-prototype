@@ -2,6 +2,7 @@ import type {
   AbilityDefinition,
   ArenaReducerAction,
   ArenaState,
+  CombatLogEntry,
   FighterState,
   MatchModifierId,
   PlayerInput,
@@ -88,6 +89,22 @@ import {
 const MAX_LOG = 48;
 const DEFAULT_MANUAL_MOVE_MS = 16;
 
+/** Combat tempo: carried across matches, clamped to keep bonuses bounded. */
+const COMBAT_TEMPO_MIN = -3;
+const COMBAT_TEMPO_MAX = 3;
+
+/** Min gap between same-class tempo bonus lines during a match. */
+const TEMPO_BONUS_LOG_COOLDOWN_MS = 5200;
+
+function clampCombatTempo(n: number): number {
+  return Math.min(COMBAT_TEMPO_MAX, Math.max(COMBAT_TEMPO_MIN, Math.round(n)));
+}
+
+function formatTempoForLog(t: number): string {
+  if (t > 0) return `+${t}`;
+  return `${t}`;
+}
+
 /** Re-export for call sites that still import from `arenaActions`. */
 export { ABILITY_RESOURCE_COST } from "./arenaUtils";
 
@@ -137,11 +154,21 @@ function appendFighterProfileProgressLogs(
   return next;
 }
 
-function withLog(state: ArenaState, message: string): ArenaState {
+function withLog(
+  state: ArenaState,
+  message: string,
+  opts?: { kind?: CombatLogEntry["kind"] },
+): ArenaState {
   const id = `${state.nowMs}-${Math.random().toString(36).slice(2, 9)}`;
+  const entry: CombatLogEntry = {
+    id,
+    atMs: state.nowMs,
+    message,
+    ...(opts?.kind ? { kind: opts.kind } : {}),
+  };
   return {
     ...state,
-    log: [...state.log, { id, atMs: state.nowMs, message }].slice(-MAX_LOG),
+    log: [...state.log, entry].slice(-MAX_LOG),
   };
 }
 
@@ -193,6 +220,13 @@ function applyDamageTo(
   if (state.matchModifier === "increased_damage") {
     raw *= MATCH_INCREASED_DAMAGE_MULT;
   }
+  // High tempo: Bio (“aggression”) deals +1 on hits and damage abilities.
+  const bioMomentumFromTempo =
+    state.combatTempo >= 2 &&
+    state.fighters[attackerIdx].fighterDefinition.faction === "Bio";
+  if (bioMomentumFromTempo) {
+    raw += 1;
+  }
   if (raw <= 0) return state;
   const next = structuredClone(state) as ArenaState;
   const attacker = next.fighters[attackerIdx];
@@ -243,6 +277,31 @@ function applyDamageTo(
       ? `${attacker.label} ${verb} ${target.label} for ${Math.round(toHp)} HP${shieldBit} (${target.blocking ? "blocked" : "clean"})`
       : `${attacker.label} ${verb} ${target.label} (no damage)`,
   );
+
+  if (
+    bioMomentumFromTempo &&
+    grossMit > 0 &&
+    s.nowMs >= s.tempoLogSilenceBioUntilMs
+  ) {
+    s = {
+      ...s,
+      tempoLogSilenceBioUntilMs: s.nowMs + TEMPO_BONUS_LOG_COOLDOWN_MS,
+    };
+    s = withLog(s, "Bio momentum hit (+1 damage).", { kind: "tempo" });
+  }
+
+  if (
+    bonusStrip > 0 &&
+    s.nowMs >= s.tempoLogSilenceMechaControlUntilMs
+  ) {
+    s = {
+      ...s,
+      tempoLogSilenceMechaControlUntilMs: s.nowMs + TEMPO_BONUS_LOG_COOLDOWN_MS,
+    };
+    s = withLog(s, "Mecha control bonus: extra shield stripped.", {
+      kind: "tempo",
+    });
+  }
 
   if (
     target.fighterDefinition.faction === "Bio" &&
@@ -353,6 +412,7 @@ function evaluateWinner(state: ArenaState): ArenaState {
     );
     let s: ArenaState = {
       ...state,
+      combatTempo: clampCombatTempo(state.combatTempo - 1),
       fighterProgress: recordPlayerLoss(state),
       winner: "opponent",
       lastMatchResult: "loss",
@@ -367,6 +427,11 @@ function evaluateWinner(state: ArenaState): ArenaState {
         },
       ].slice(-MAX_LOG),
     };
+    s = withLog(
+      s,
+      `Tempo falls to ${formatTempoForLog(s.combatTempo)}.`,
+      { kind: "tempo" },
+    );
     if (hadStreak >= 3) {
       s = withLog(s, "The arena watches you.");
     }
@@ -399,6 +464,7 @@ function evaluateWinner(state: ArenaState): ArenaState {
     const nextResources = addArenaResources(state.resources, delta);
     let s: ArenaState = {
       ...state,
+      combatTempo: clampCombatTempo(state.combatTempo + 1),
       fighterProgress: recordPlayerWin(state),
       winner: "player",
       lastMatchResult: "win",
@@ -414,6 +480,11 @@ function evaluateWinner(state: ArenaState): ArenaState {
         },
       ].slice(-MAX_LOG),
     };
+    s = withLog(
+      s,
+      `Tempo rises to ${formatTempoForLog(s.combatTempo)}.`,
+      { kind: "tempo" },
+    );
     for (const line of logLines) {
       s = withLog(s, line);
     }
@@ -649,14 +720,27 @@ function applyAbilityEffect(
         const evo = getProfileEvolution(profile);
         if (evo.path === "sustain") healAmt += evo.healBonus;
       }
+      const pureTempoHeal =
+        state.combatTempo <= -2 && p.fighterDefinition.faction === "Pure";
+      if (pureTempoHeal) healAmt += 1;
       p.hp = clampHp(p.hp + healAmt, p.hpMax);
       const gained = Math.round(p.hp - before);
-      return evaluateWinner(
-        withLog(
-          state,
-          `${p.label} healed ${gained} HP with ${ability.name}.`,
-        ),
+      let s = withLog(
+        state,
+        `${p.label} healed ${gained} HP with ${ability.name}.`,
       );
+      if (
+        pureTempoHeal &&
+        gained > 0 &&
+        s.nowMs >= s.tempoLogSilencePureHealUntilMs
+      ) {
+        s = {
+          ...s,
+          tempoLogSilencePureHealUntilMs: s.nowMs + TEMPO_BONUS_LOG_COOLDOWN_MS,
+        };
+        s = withLog(s, "Pure recovery bonus (+1 heal).", { kind: "tempo" });
+      }
+      return evaluateWinner(s);
     }
     case "buff": {
       const p = state.fighters[actorIdx];
@@ -759,6 +843,9 @@ function applyFactionAbilityFollowup(
       const evo = getProfileEvolution(profile);
       if (evo.path === "sustain") mend += evo.healBonus;
     }
+    const pureTempoMend =
+      state.combatTempo <= -2 && actor.fighterDefinition.faction === "Pure";
+    if (pureTempoMend) mend += 1;
     actor.hp = clampHp(actor.hp + mend, actor.hpMax);
     if (
       actor.hp > before &&
@@ -767,6 +854,17 @@ function applyFactionAbilityFollowup(
       actor.pureSoulLogSilenceUntilMs =
         state.nowMs + PURE_SOUL_LOG_COOLDOWN_MS;
       s = withLog(s, "The soul responds");
+    }
+    if (
+      pureTempoMend &&
+      actor.hp > before &&
+      s.nowMs >= s.tempoLogSilencePureHealUntilMs
+    ) {
+      s = {
+        ...s,
+        tempoLogSilencePureHealUntilMs: s.nowMs + TEMPO_BONUS_LOG_COOLDOWN_MS,
+      };
+      s = withLog(s, "Pure recovery bonus (+1 heal).", { kind: "tempo" });
     }
   }
 
@@ -930,6 +1028,7 @@ export function arenaReducer(
           matchOrdinal: state.matchOrdinal,
           winStreak: state.winStreak,
           fighterProfiles: state.fighterProfiles,
+          combatTempo: state.combatTempo,
         }),
       );
     case "SPEND_REINFORCE_BODY":

@@ -27,6 +27,8 @@ type MatchHudProps = {
   spendUnlocked: boolean;
   activeFighterName: string;
   activeFighterCareer: FighterProgressEntry;
+  /** Run-wide combat rhythm (−3…+3), mirrored from arena state. */
+  combatTempo: number;
   onResetMatch: () => void;
   onReinforceBody: () => void;
   onBribeHandler: () => void;
@@ -34,6 +36,55 @@ type MatchHudProps = {
   resourceFocus: ResourceFocusId | null;
   onResourceFocusChange: (focus: ResourceFocusId | null) => void;
 };
+
+const TEMPO_MIN = -3;
+const TEMPO_MAX = 3;
+
+function clampTempoDisplay(n: number): number {
+  return Math.min(TEMPO_MAX, Math.max(TEMPO_MIN, Math.round(n)));
+}
+
+function tempoStateLabel(t: number): string {
+  if (t <= -2) return "Fractured rhythm";
+  if (t >= 2) return "Blood rising";
+  return "Balanced tempo";
+}
+
+function tempoEffectSummary(t: number): string {
+  if (t >= 2) return "Bio hits gain +1 damage";
+  if (t <= -2) return "Pure healing gains +1";
+  return "No active tempo bonus";
+}
+
+function tempoPanelTone(t: number): {
+  card: string;
+  value: string;
+  label: string;
+  hint: string;
+} {
+  if (t <= -2) {
+    return {
+      card: "border-amber-800/55 bg-amber-950/40 dark:border-amber-800/50 dark:bg-amber-950/30",
+      value: "text-amber-100",
+      label: "text-amber-200/95",
+      hint: "text-amber-200/70",
+    };
+  }
+  if (t >= 2) {
+    return {
+      card: "border-rose-600/50 bg-rose-950/40 dark:border-rose-600/45 dark:bg-rose-950/35",
+      value: "text-rose-100",
+      label: "text-rose-200/95",
+      hint: "text-rose-200/75",
+    };
+  }
+  return {
+    card: "border-zinc-200 bg-zinc-50/90 dark:border-zinc-700 dark:bg-zinc-900/45",
+    value: "text-zinc-900 dark:text-zinc-50",
+    label: "text-zinc-700 dark:text-zinc-300",
+    hint: "text-zinc-500 dark:text-zinc-400",
+  };
+}
 
 export function MatchHud({
   title,
@@ -46,6 +97,7 @@ export function MatchHud({
   spendUnlocked,
   activeFighterName,
   activeFighterCareer,
+  combatTempo,
   onResetMatch,
   onReinforceBody,
   onBribeHandler,
@@ -76,6 +128,9 @@ export function MatchHud({
     ? "Between bouts or before first blood — spend resources here (no shop)."
     : "Finish the exchange or return to full health to spend resources.";
 
+  const tempo = clampTempoDisplay(combatTempo);
+  const tempoTone = tempoPanelTone(tempo);
+
   return (
     <header className="flex flex-col gap-4 border-b border-zinc-200 pb-4 dark:border-zinc-800 lg:flex-row lg:flex-wrap lg:items-start lg:justify-between">
       <div className="min-w-0 flex-1">
@@ -96,6 +151,32 @@ export function MatchHud({
           focus={resourceFocus}
           onFocusChange={onResourceFocusChange}
         />
+
+        <aside
+          className={`mt-3 max-w-sm rounded-lg border px-3 py-2.5 ${tempoTone.card}`}
+          aria-label="Combat tempo"
+        >
+          <p className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500 dark:text-zinc-400">
+            Combat tempo
+          </p>
+          <div className="mt-1 flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+            <span
+              className={`text-2xl font-bold tabular-nums leading-none ${tempoTone.value}`}
+            >
+              {tempo > 0 ? `+${tempo}` : tempo}
+            </span>
+            <span className="text-[10px] text-zinc-500 dark:text-zinc-400">
+              ({TEMPO_MIN} … {TEMPO_MAX})
+            </span>
+          </div>
+          <p className={`mt-1.5 text-sm font-medium ${tempoTone.label}`}>
+            {tempoStateLabel(tempo)}
+          </p>
+          <p className={`mt-1 text-xs leading-snug ${tempoTone.hint}`}>
+            {tempoEffectSummary(tempo)}
+          </p>
+        </aside>
+
         {(nextMatchHpBonus > 0 || nextMatchAttackBonus > 0) && (
           <p className="mt-2 text-xs text-violet-700 dark:text-violet-300">
             Queued for next reset: +{nextMatchHpBonus} max HP · +
