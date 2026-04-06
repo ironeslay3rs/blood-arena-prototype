@@ -2,11 +2,13 @@ import type {
   ArenaResources,
   ArenaState,
   ClassId,
+  CombatLogEntry,
   FighterId,
   FighterProgressMap,
   FighterProfile,
   FighterState,
   MatchResult,
+  OpponentControllerKind,
   ResourceFocusId,
 } from "./arenaTypes";
 import {
@@ -24,6 +26,11 @@ import {
   matchModifierShiftLogLine,
   MATCH_REDUCED_HP_FACTOR,
 } from "./matchModifiers";
+import {
+  DEFAULT_COMBAT_STANCE,
+  type CombatStanceId,
+} from "./combatStance";
+import { matchIntroReputationLines } from "./fighterReputation";
 
 export type ArenaProgressCarry = {
   /** @deprecated use `resources.credits` */
@@ -41,6 +48,9 @@ export type ArenaProgressCarry = {
   winStreak?: number;
   fighterProfiles?: Record<string, FighterProfile>;
   combatTempo?: number;
+  opponentController?: OpponentControllerKind;
+  /** Per-fighter stance; rematch preserves; roster change resets in reducer. */
+  combatStances?: [CombatStanceId, CombatStanceId];
 };
 
 function playerMaxWithPenalty(cardMax: number, pendingPenalty: number): number {
@@ -75,18 +85,27 @@ export function createInitialArenaState(
     pending,
   );
 
+  const opponentController: OpponentControllerKind =
+    carry?.opponentController ?? "local_human";
+  const opponentIsTrainingDummy = opponentController === "dummy";
+
+  const stance0 = carry?.combatStances?.[0] ?? DEFAULT_COMBAT_STANCE;
+  const stance1 = carry?.combatStances?.[1] ?? DEFAULT_COMBAT_STANCE;
+
   const player = makeFighterFromDefinition("player", playerFighter, {
     x: 22,
-    label: "You",
+    label: "Player 1",
     isDummy: false,
     hpMaxOverride: playerMax,
     progressionLevel: playerLevel,
     flatAttackBonus: atkPrep,
+    combatStance: stance0,
   });
   const enemy = makeFighterFromDefinition("opponent", enemyFighter, {
     x: 78,
-    label: "Training Dummy",
-    isDummy: true,
+    label: opponentIsTrainingDummy ? "Training (AI)" : "Player 2",
+    isDummy: opponentIsTrainingDummy,
+    combatStance: stance1,
   });
 
   const matchOrdinal = (carry?.matchOrdinal ?? -1) + 1;
@@ -101,22 +120,29 @@ export function createInitialArenaState(
     );
   }
 
-  return {
+  const baseLog: CombatLogEntry[] = [
+    {
+      id: "welcome",
+      atMs: 0,
+      message:
+        opponentController === "dummy"
+          ? "Training mode — Player 1 vs AI. Same combat rules; the bot auto-presses and uses abilities."
+          : opponentController === "local_human"
+            ? "Blood Arena — Player 1 vs Player 2 (local hot-seat). Same combat systems for both. P2: U attack, O dash, J/L move, I block, [ ]."
+            : "Blood Arena — Player 1 vs Player 2 (online slot reserved; offline stub).",
+    },
+    {
+      id: "match-modifier",
+      atMs: 0,
+      message: `${matchModifierShiftLogLine(matchModifier)}.`,
+    },
+  ];
+
+  const draft: ArenaState = {
     fighters,
     playerFighter,
     enemyFighter,
-    log: [
-      {
-        id: "welcome",
-        atMs: 0,
-        message: "Blood Arena — move, dash, strike, and block the dummy.",
-      },
-      {
-        id: "match-modifier",
-        atMs: 0,
-        message: `${matchModifierShiftLogLine(matchModifier)}.`,
-      },
-    ],
+    log: baseLog,
     winner: null,
     nowMs: 0,
     resources,
@@ -139,6 +165,20 @@ export function createInitialArenaState(
     tempoLogSilenceBioUntilMs: 0,
     tempoLogSilencePureHealUntilMs: 0,
     tempoLogSilenceMechaControlUntilMs: 0,
+    tempoNarrativeSilenceUntilMs: 0,
+    opponentController,
+  };
+
+  const repIntro = matchIntroReputationLines(draft).map((message, i) => ({
+    id: `rep-intro-${i}`,
+    atMs: 0,
+    message,
+    kind: "reputation" as const,
+  }));
+
+  return {
+    ...draft,
+    log: [...draft.log, ...repIntro],
   };
 }
 
@@ -162,6 +202,11 @@ export function resetArenaWithPlayerClass(
       winStreak: state.winStreak,
       fighterProfiles: state.fighterProfiles,
       combatTempo: state.combatTempo,
+      opponentController: state.opponentController,
+      combatStances: [
+        state.fighters[0].combatStance,
+        state.fighters[1].combatStance,
+      ],
     },
   );
 }
@@ -180,5 +225,10 @@ export function rematchKeepingRoster(state: ArenaState): ArenaState {
     winStreak: state.winStreak,
     fighterProfiles: state.fighterProfiles,
     combatTempo: state.combatTempo,
+    opponentController: state.opponentController,
+    combatStances: [
+      state.fighters[0].combatStance,
+      state.fighters[1].combatStance,
+    ],
   });
 }

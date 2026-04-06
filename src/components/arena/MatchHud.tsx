@@ -3,6 +3,8 @@ import type {
   FighterProgressEntry,
   FighterRole,
   MatchResult,
+  OpponentControllerKind,
+  ReputationSnapshot,
   ResourceFocusId,
 } from "@/features/arena/arenaTypes";
 import { WIN_CREDIT_REWARD } from "@/features/arena/arenaActions";
@@ -29,6 +31,9 @@ type MatchHudProps = {
   activeFighterCareer: FighterProgressEntry;
   /** Run-wide combat rhythm (−3…+3), mirrored from arena state. */
   combatTempo: number;
+  opponentController: OpponentControllerKind;
+  /** Player-visible reputation (offline). */
+  playerReputation: ReputationSnapshot;
   onResetMatch: () => void;
   onReinforceBody: () => void;
   onBribeHandler: () => void;
@@ -44,16 +49,30 @@ function clampTempoDisplay(n: number): number {
   return Math.min(TEMPO_MAX, Math.max(TEMPO_MIN, Math.round(n)));
 }
 
-function tempoStateLabel(t: number): string {
-  if (t <= -2) return "Fractured rhythm";
-  if (t >= 2) return "Blood rising";
-  return "Balanced tempo";
+/** How this tempo *reads* as a fighting identity (HUD). */
+function tempoFightStyleHeadline(t: number): string {
+  if (t >= 2) return "You dictate the exchange";
+  if (t <= -2) return "You fight like you have something to lose";
+  if (t >= 1) return "Edging into their space";
+  if (t <= -1) return "Picking your windows";
+  return "Even footing";
 }
 
-function tempoEffectSummary(t: number): string {
-  if (t >= 2) return "Bio hits gain +1 damage";
-  if (t <= -2) return "Pure healing gains +1";
-  return "No active tempo bonus";
+/** Mechanical reminder + pacing hint (same bonuses as before). */
+function tempoFightStyleBody(t: number): string {
+  if (t >= 2) {
+    return "Burst rhythm—tools and combat motion both run hotter; combat log leans aggressive. Bio strikes +1.";
+  }
+  if (t <= -2) {
+    return "Grind rhythm—tools and on-screen recovery both run heavier; combat log leans survival. Pure heals +1.";
+  }
+  if (t >= 1) {
+    return "Slightly faster exchanges—cooldowns and on-screen beats both pick up. No faction tempo bonus yet.";
+  }
+  if (t <= -1) {
+    return "Slightly heavier recovery—cooldowns and combat motion both ease down. No faction tempo bonus yet.";
+  }
+  return "Neutral—no faction tempo bonus; even pacing.";
 }
 
 function tempoPanelTone(t: number): {
@@ -86,6 +105,27 @@ function tempoPanelTone(t: number): {
   };
 }
 
+function matchSubtitle(
+  winner: FighterRole | null,
+  mode: OpponentControllerKind,
+): string {
+  if (winner === "player") {
+    if (mode === "dummy") return "Player 1 wins — training opponent down.";
+    return "Player 1 wins the exchange.";
+  }
+  if (winner === "opponent") {
+    if (mode === "dummy") return "Player 1 is down — training continues.";
+    return "Player 2 wins the exchange.";
+  }
+  if (mode === "dummy") {
+    return "Training vs AI — same combat rules as PvP; bot uses the same kit.";
+  }
+  if (mode === "local_human") {
+    return "Local PvP — Player 1 vs Player 2, same systems, shared screen.";
+  }
+  return "Online PvP (stub) — reserved for networked play.";
+}
+
 export function MatchHud({
   title,
   winner,
@@ -98,6 +138,8 @@ export function MatchHud({
   activeFighterName,
   activeFighterCareer,
   combatTempo,
+  opponentController,
+  playerReputation,
   onResetMatch,
   onReinforceBody,
   onBribeHandler,
@@ -105,12 +147,7 @@ export function MatchHud({
   resourceFocus,
   onResourceFocusChange,
 }: MatchHudProps) {
-  const subtitle =
-    winner === "player"
-      ? "You cleared the dummy."
-      : winner === "opponent"
-        ? "You were defeated."
-        : "Side-view 1v1 vs. training dummy — local prototype.";
+  const subtitle = matchSubtitle(winner, opponentController);
 
   const showOutcome = winner != null && lastMatchResult != null;
   const r = resources;
@@ -138,6 +175,20 @@ export function MatchHud({
           {title}
         </h1>
         <p className="mt-1 text-sm text-zinc-500">{subtitle}</p>
+        <div
+          className="mt-2 max-w-md rounded-lg border border-amber-200/90 bg-amber-50/60 px-3 py-2 dark:border-amber-800/50 dark:bg-amber-950/35"
+          aria-label="Your reputation"
+        >
+          <p className="text-[10px] font-semibold uppercase tracking-wider text-amber-900/90 dark:text-amber-300/90">
+            Known in the arena
+          </p>
+          <p className="text-base font-bold text-zinc-900 dark:text-zinc-50">
+            {playerReputation.title}
+          </p>
+          <p className="text-xs leading-snug text-zinc-600 dark:text-zinc-400">
+            {playerReputation.descriptor}
+          </p>
+        </div>
         <p className="mt-2 text-xs font-medium uppercase tracking-wide text-zinc-500">
           Black Market bridge (not a full economy)
         </p>
@@ -170,10 +221,10 @@ export function MatchHud({
             </span>
           </div>
           <p className={`mt-1.5 text-sm font-medium ${tempoTone.label}`}>
-            {tempoStateLabel(tempo)}
+            {tempoFightStyleHeadline(tempo)}
           </p>
           <p className={`mt-1 text-xs leading-snug ${tempoTone.hint}`}>
-            {tempoEffectSummary(tempo)}
+            {tempoFightStyleBody(tempo)}
           </p>
         </aside>
 

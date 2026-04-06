@@ -9,7 +9,24 @@ import { loadArenaResources, saveArenaResources } from "./arenaResourcesStorage"
 import { loadFighterProgress, saveFighterProgress } from "./fighterProgressStorage";
 import { loadResourceFocus, saveResourceFocus } from "./resourceFocusStorage";
 import { loadWinStreak, saveWinStreak } from "./winStreakStorage";
-import type { FighterId, PlayerInput, ResourceFocusId } from "./arenaTypes";
+import {
+  buildOpponentInput,
+  opponentKeyIsAttack,
+  opponentKeyIsBlock,
+  opponentKeyIsDash,
+  opponentKeyIsMoveLeft,
+  opponentKeyIsMoveRight,
+  opponentKeyIsSkill1,
+  opponentKeyIsSkill2,
+  type OpponentKeysHeld,
+} from "./opponentInputMapping";
+import type {
+  CombatStanceId,
+  FighterId,
+  OpponentControllerKind,
+  PlayerInput,
+  ResourceFocusId,
+} from "./arenaTypes";
 
 type AbilitySlot = 0 | 1;
 
@@ -123,6 +140,12 @@ export function useArenaEngine() {
     block: false,
   });
 
+  const opponentKeysRef = useRef<OpponentKeysHeld>({
+    left: false,
+    right: false,
+    block: false,
+  });
+
   const actions = useMemo(
     () => ({
       moveLeft: (dtMs: number = DEFAULT_MOVE_MS) =>
@@ -146,11 +169,19 @@ export function useArenaEngine() {
       resetMatch: () => dispatch({ type: "RESET_MATCH" }),
       setPlayerFighter: (fighterId: FighterId) =>
         dispatch({ type: "SET_PLAYER_FIGHTER", fighterId }),
+      setOpponentController: (controller: OpponentControllerKind) =>
+        dispatch({ type: "SET_OPPONENT_CONTROLLER", controller }),
+      opponentBasicAttack: () => dispatch({ type: "OPPONENT_BASIC_ATTACK" }),
+      opponentDash: () => dispatch({ type: "OPPONENT_DASH" }),
+      opponentSkill1: () => dispatch({ type: "OPPONENT_USE_ABILITY", slot: 0 }),
+      opponentSkill2: () => dispatch({ type: "OPPONENT_USE_ABILITY", slot: 1 }),
       reinforceBody: () => dispatch({ type: "SPEND_REINFORCE_BODY" }),
       bribeHandler: () => dispatch({ type: "SPEND_BRIBE_HANDLER" }),
       bloodRitual: () => dispatch({ type: "SPEND_BLOOD_RITUAL" }),
       setResourceFocus: (focus: ResourceFocusId | null) =>
         dispatch({ type: "SET_RESOURCE_FOCUS", focus }),
+      setCombatStance: (fighterIdx: 0 | 1, stance: CombatStanceId) =>
+        dispatch({ type: "SET_COMBAT_STANCE", fighterIdx, stance }),
     }),
     [],
   );
@@ -181,6 +212,27 @@ export function useArenaEngine() {
         e.preventDefault();
         dispatch({ type: "USE_ABILITY", slot: 1 });
       }
+
+      if (opponentKeyIsMoveLeft(t)) opponentKeysRef.current.left = true;
+      if (opponentKeyIsMoveRight(t)) opponentKeysRef.current.right = true;
+      if (opponentKeyIsBlock(t)) opponentKeysRef.current.block = true;
+
+      if (opponentKeyIsDash(t)) {
+        e.preventDefault();
+        dispatch({ type: "OPPONENT_DASH" });
+      }
+      if (opponentKeyIsAttack(t)) {
+        e.preventDefault();
+        dispatch({ type: "OPPONENT_BASIC_ATTACK" });
+      }
+      if (opponentKeyIsSkill1(t)) {
+        e.preventDefault();
+        dispatch({ type: "OPPONENT_USE_ABILITY", slot: 0 });
+      }
+      if (opponentKeyIsSkill2(t)) {
+        e.preventDefault();
+        dispatch({ type: "OPPONENT_USE_ABILITY", slot: 1 });
+      }
     };
 
     const up = (e: KeyboardEvent) => {
@@ -191,6 +243,10 @@ export function useArenaEngine() {
         keysRef.current.block = false;
         dispatch({ type: "BLOCK_END" });
       }
+
+      if (opponentKeyIsMoveLeft(t)) opponentKeysRef.current.left = false;
+      if (opponentKeyIsMoveRight(t)) opponentKeysRef.current.right = false;
+      if (opponentKeyIsBlock(t)) opponentKeysRef.current.block = false;
     };
 
     const blur = () => {
@@ -199,6 +255,9 @@ export function useArenaEngine() {
       keysRef.current.right = false;
       keysRef.current.block = false;
       if (wasBlock) dispatch({ type: "BLOCK_END" });
+      opponentKeysRef.current.left = false;
+      opponentKeysRef.current.right = false;
+      opponentKeysRef.current.block = false;
     };
 
     window.addEventListener("keydown", down);
@@ -221,6 +280,7 @@ export function useArenaEngine() {
         type: "TICK",
         dtMs: dt,
         input: buildInput(keysRef.current),
+        opponentInput: buildOpponentInput(opponentKeysRef.current),
       });
       frame = requestAnimationFrame(tick);
     };

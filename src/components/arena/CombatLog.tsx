@@ -13,7 +13,9 @@ export function CombatLog({ entries }: { entries: CombatLogEntry[] }) {
             className={
               e.kind === "tempo"
                 ? "border-l-2 border-zinc-400 pl-2 font-sans text-[11px] font-medium tracking-wide text-zinc-600 dark:border-zinc-500 dark:text-zinc-400"
-                : undefined
+                : e.kind === "reputation"
+                  ? "border-l-2 border-rose-500 pl-2 font-sans text-[11px] font-medium italic text-rose-900/90 dark:border-rose-500 dark:text-rose-200/95"
+                  : undefined
             }
           >
             {e.message}

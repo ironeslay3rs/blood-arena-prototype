@@ -1,4 +1,7 @@
 import type { CanonCharacterId } from "@/features/shared/canonCharacters";
+import type { CombatStanceId } from "./combatStance";
+
+export type { CombatStanceId } from "./combatStance";
 
 export type ClassId = "werewolf" | "paladin" | "silver-knight";
 
@@ -110,16 +113,29 @@ export interface FighterState {
   nearDeathFlavorLogged: boolean;
   /** Cleared each spawn; profile evolution “first hit” uses this flag. */
   openingStrikeConsumed: boolean;
+  /**
+   * How this fighter lanes right now — immediate modifiers only (no gear).
+   * Same three stances for everyone (PvP fair).
+   */
+  combatStance: CombatStanceId;
 }
 
 /** `tempo`: fight rhythm / system bonus lines — rendered apart from damage text. */
-export type CombatLogEntryKind = "tempo";
+/** `reputation`: crowd / recognition flavor (offline reputation system). */
+export type CombatLogEntryKind = "tempo" | "reputation";
+
+/** UI-only cues for evolution perks (silent or minimal log message). */
+export type EvolutionCueKind =
+  | "first_hit_impact"
+  | "heal_bonus_pulse"
+  | "shield_strip_crack";
 
 export interface CombatLogEntry {
   id: string;
   atMs: number;
   message: string;
   kind?: CombatLogEntryKind;
+  evolutionCue?: EvolutionCueKind;
 }
 
 /** Outcome of the most recently finished round (cleared on reset / new match spawn). */
@@ -146,6 +162,62 @@ export interface FighterProgressEntry {
 }
 
 export type FighterProgressMap = Record<FighterId, FighterProgressEntry>;
+
+/**
+ * Combat evolution lane (aligned with `ProfileEvolutionPath` in `fighterProfileEvolution.ts`).
+ * Declared here so UI can depend on arena types without importing evolution helpers.
+ */
+export type FighterKeyTrait = "aggression" | "sustain" | "control" | "chaos";
+
+/**
+ * Offline reputation band — titles from wins/losses/damage/streak only (no leaderboard).
+ */
+export interface ReputationSnapshot {
+  title: string;
+  descriptor: string;
+  prestige: 0 | 1 | 2 | 3 | 4;
+}
+
+/**
+ * Single UI read model for the active player: merges {@link FighterProfile} (canonical record +
+ * milestones) with live roster row + combat label. Use {@link buildUnifiedPlayerIdentity} to build.
+ */
+export interface UnifiedFighterIdentity {
+  /** In-arena slot label (e.g. "Player 1"). */
+  arenaLabel: string;
+  /** Selected roster / kit name. */
+  rosterName: string;
+  /** Canon identity name (saga). */
+  canonName: string;
+  /** Optional call-sign; when set, shown as primary with canon as secondary. */
+  nickname?: string;
+  /** Primary headline: `nickname ?? canonName`. */
+  displayName: string;
+  /** Wins / losses — sourced from {@link FighterProfile} (same as match-end persistence). */
+  wins: number;
+  losses: number;
+  /** Derived from profile wins: `floor(wins/3)+1`. */
+  level: number;
+  /** 0 = before first evolution tier, 1 = 5–9 wins, 2 = 10+ wins. */
+  evolutionTier: 0 | 1 | 2;
+  keyTrait: FighterKeyTrait;
+  /** Short label for trait (e.g. "Aggression"). */
+  keyTraitDisplay: string;
+  /** Human-readable evolution step (e.g. "Tier I"). */
+  evolutionTierDisplay: string;
+  /** Arena-facing title from milestones + tier. */
+  arenaTitle: string;
+  /**
+   * Emotional hook — one memorable line (trait/tier/milestones). Distinct from {@link arenaTitle}.
+   */
+  identityLine: string;
+  totalDamageDealt: number;
+  totalDamageTaken: number;
+  milestoneArenaRemembersName: boolean;
+  milestoneNoLongerPrey: boolean;
+  /** Visible reputation — fear factor / recognition. */
+  reputation: ReputationSnapshot;
+}
 
 /**
  * Persistent PvP identity for the human player, keyed by canon id in
@@ -175,6 +247,14 @@ export type MatchModifierId =
   | "reduced_hp"
   | "increased_damage"
   | "unstable_resource";
+
+/**
+ * Who controls fighter index 1. Does not add mechanics — routes input and AI.
+ * - `dummy`: AI controls fighter 1 (training — same kit rules; optional auto spacing)
+ * - `local_human`: hot-seat PvP — second human (`opponentInput` on TICK + discrete actions)
+ * - `remote`: same input shape as local; network layer to be wired later
+ */
+export type OpponentControllerKind = "dummy" | "local_human" | "remote";
 
 export interface ArenaState {
   fighters: [FighterState, FighterState];
@@ -231,6 +311,10 @@ export interface ArenaState {
   tempoLogSilenceBioUntilMs: number;
   tempoLogSilencePureHealUntilMs: number;
   tempoLogSilenceMechaControlUntilMs: number;
+  /** Match-local: throttle fight-style tempo narrative lines (ms, exclusive). */
+  tempoNarrativeSilenceUntilMs: number;
+  /** How fighter 1 is driven: dummy AI vs human/local vs future online. */
+  opponentController: OpponentControllerKind;
 }
 
 export interface PlayerInput {
@@ -239,13 +323,17 @@ export interface PlayerInput {
 }
 
 export type ArenaReducerAction =
-  | { type: "TICK"; dtMs: number; input: PlayerInput }
+  | { type: "TICK"; dtMs: number; input: PlayerInput; opponentInput: PlayerInput }
   | { type: "BASIC_ATTACK" }
   | { type: "DASH" }
   | { type: "USE_ABILITY"; slot: 0 | 1 }
   | { type: "SET_PLAYER_CLASS"; classId: ClassId }
   | { type: "SET_PLAYER_FIGHTER"; fighterId: FighterId }
+  | { type: "SET_OPPONENT_CONTROLLER"; controller: OpponentControllerKind }
   | { type: "RESET_MATCH" }
+  | { type: "OPPONENT_BASIC_ATTACK" }
+  | { type: "OPPONENT_DASH" }
+  | { type: "OPPONENT_USE_ABILITY"; slot: 0 | 1 }
   | { type: "SPEND_REINFORCE_BODY" }
   | { type: "SPEND_BRIBE_HANDLER" }
   | { type: "SPEND_BLOOD_RITUAL" }
@@ -253,4 +341,5 @@ export type ArenaReducerAction =
   | { type: "BLOCK_END" }
   | { type: "MOVE_LEFT"; dtMs?: number }
   | { type: "MOVE_RIGHT"; dtMs?: number }
-  | { type: "SET_RESOURCE_FOCUS"; focus: ResourceFocusId | null };
+  | { type: "SET_RESOURCE_FOCUS"; focus: ResourceFocusId | null }
+  | { type: "SET_COMBAT_STANCE"; fighterIdx: 0 | 1; stance: CombatStanceId };

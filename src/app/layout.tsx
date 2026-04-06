@@ -14,7 +14,8 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: "Blood Arena Prototype",
-  description: "Small browser PvP combat prototype — local training dummy.",
+  description:
+    "Browser PvP fighter — local hot-seat first, optional training vs AI.",
 };
 
 export default function RootLayout({

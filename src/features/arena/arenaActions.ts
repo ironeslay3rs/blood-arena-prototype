@@ -34,6 +34,11 @@ import {
   rematchKeepingRoster,
   resetArenaWithPlayerClass,
 } from "./initialArenaState";
+import {
+  isOpponentHumanController,
+  shouldRunDummyAi,
+  shouldShiftDummyTowardPlayer,
+} from "./opponentPolicy";
 import { levelFromWins } from "./fighterProgress";
 import {
   BRIBE_CREDITS_COST,
@@ -44,6 +49,16 @@ import {
   RITUAL_BLOOD_CHITS_COST,
   canSpendArenaPrep,
 } from "./arenaSpend";
+import {
+  DEFAULT_COMBAT_STANCE,
+  stanceIncomingHpMult,
+  stanceOutgoingDamageMult,
+  stanceResourceRegenMult,
+} from "./combatStance";
+import {
+  reputationForArenaFighter,
+  reputationStreakLogLine,
+} from "./fighterReputation";
 import {
   addArenaResources,
   buildWinResourceRewards,
@@ -96,8 +111,74 @@ const COMBAT_TEMPO_MAX = 3;
 /** Min gap between same-class tempo bonus lines during a match. */
 const TEMPO_BONUS_LOG_COOLDOWN_MS = 5200;
 
+/** Min gap between tempo “fight style” narrative lines (combat log). */
+const TEMPO_NARRATIVE_COOLDOWN_MS = 11000;
+
+/** Player-only: scales effective cooldown tick rate (no new combat stats). */
+const TEMPO_CD_MULT_PER_STEP = 0.032;
+
+const HIGH_TEMPO_PRESS_LINES = [
+  "You keep pressing forward.",
+  "The exchange rides your rhythm—step in again.",
+  "No space between beats; that is your tempo.",
+] as const;
+
+const LOW_TEMPO_SURVIVAL_LINES = [
+  "You shorten your stance and force the next beat wide.",
+  "Survive the frame—answer when it opens.",
+  "Measured breath. Still in the fight.",
+] as const;
+
 function clampCombatTempo(n: number): number {
   return Math.min(COMBAT_TEMPO_MAX, Math.max(COMBAT_TEMPO_MIN, Math.round(n)));
+}
+
+/** Player only: higher tempo ticks cooldowns down slightly faster (feel, not a new rule). */
+function tempoPlayerCooldownMultiplier(tempo: number): number {
+  return 1 + clampCombatTempo(tempo) * TEMPO_CD_MULT_PER_STEP;
+}
+
+/**
+ * Playback speed for combat UI motion (damage float, hit flashes, staged attack beats, arena pulse).
+ * Matches player cooldown pacing so high tempo reads as one rhythm: snappier motion and faster
+ * ability recovery; low tempo stretches both.
+ *
+ * Use as a speed factor: `durationMs / tempoCombatAnimationSpeedMultiplier(tempo)`.
+ */
+export function tempoCombatAnimationSpeedMultiplier(tempo: number): number {
+  return tempoPlayerCooldownMultiplier(tempo);
+}
+
+function appendTempoFightStyleNarrative(
+  s: ArenaState,
+  pre: {
+    attackerIdx: 0 | 1;
+    targetIdx: 0 | 1;
+    grossMit: number;
+    /** True when a Bio momentum tempo line was just appended this frame. */
+    skipHighPersona: boolean;
+  },
+): ArenaState {
+  if (pre.grossMit <= 0) return s;
+  if (s.nowMs < s.tempoNarrativeSilenceUntilMs) return s;
+  const tempo = clampCombatTempo(s.combatTempo);
+  let line: string | null = null;
+  if (pre.attackerIdx === 0 && tempo >= 2 && !pre.skipHighPersona) {
+    const i =
+      Math.abs(Math.floor(s.nowMs / 1000)) % HIGH_TEMPO_PRESS_LINES.length;
+    line = HIGH_TEMPO_PRESS_LINES[i]!;
+  } else if (pre.targetIdx === 0 && tempo <= -2) {
+    const i =
+      Math.abs(Math.floor(s.nowMs / 700)) % LOW_TEMPO_SURVIVAL_LINES.length;
+    line = LOW_TEMPO_SURVIVAL_LINES[i]!;
+  }
+  if (!line) return s;
+  let out = withLog(s, line, { kind: "tempo" });
+  out = {
+    ...out,
+    tempoNarrativeSilenceUntilMs: s.nowMs + TEMPO_NARRATIVE_COOLDOWN_MS,
+  };
+  return out;
 }
 
 function formatTempoForLog(t: number): string {
@@ -157,7 +238,10 @@ function appendFighterProfileProgressLogs(
 function withLog(
   state: ArenaState,
   message: string,
-  opts?: { kind?: CombatLogEntry["kind"] },
+  opts?: {
+    kind?: CombatLogEntry["kind"];
+    evolutionCue?: CombatLogEntry["evolutionCue"];
+  },
 ): ArenaState {
   const id = `${state.nowMs}-${Math.random().toString(36).slice(2, 9)}`;
   const entry: CombatLogEntry = {
@@ -165,6 +249,7 @@ function withLog(
     atMs: state.nowMs,
     message,
     ...(opts?.kind ? { kind: opts.kind } : {}),
+    ...(opts?.evolutionCue ? { evolutionCue: opts.evolutionCue } : {}),
   };
   return {
     ...state,
@@ -205,6 +290,7 @@ function applyDamageTo(
 ): ArenaState {
   if (state.winner != null || rawDamage <= 0) return state;
   let raw = rawDamage;
+  let firstHitEvolutionFlash = false;
   if (attackerIdx === 0) {
     const pre = state.fighters[0];
     if (!pre.openingStrikeConsumed) {
@@ -214,6 +300,7 @@ function applyDamageTo(
       const evo = getProfileEvolution(profile);
       if (evo.path === "aggression" && evo.firstHitAttackBonus > 0) {
         raw += evo.firstHitAttackBonus;
+        firstHitEvolutionFlash = true;
       }
     }
   }
@@ -231,6 +318,8 @@ function applyDamageTo(
   const next = structuredClone(state) as ArenaState;
   const attacker = next.fighters[attackerIdx];
   const target = next.fighters[targetIdx];
+  raw *= stanceOutgoingDamageMult(attacker.combatStance);
+  if (raw <= 0) return state;
   const grossMit = mitigatedDamage(target, raw);
   let toHp = grossMit;
   const absorbedBase = Math.min(target.tempShield, toHp);
@@ -254,6 +343,7 @@ function applyDamageTo(
   const totalShieldHit = absorbedBase + bonusStrip;
   target.tempShield -= totalShieldHit;
   toHp -= absorbedBase;
+  toHp *= stanceIncomingHpMult(target.combatStance);
   const hpBefore = target.hp;
   target.hp = clampHp(target.hp - toHp, target.hpMax);
   const hpDamage = Math.round(toHp);
@@ -278,6 +368,11 @@ function applyDamageTo(
       : `${attacker.label} ${verb} ${target.label} (no damage)`,
   );
 
+  if (firstHitEvolutionFlash && grossMit > 0) {
+    s = withLog(s, "\u200b", { evolutionCue: "first_hit_impact" });
+  }
+
+  let skipHighPersona = false;
   if (
     bioMomentumFromTempo &&
     grossMit > 0 &&
@@ -288,6 +383,7 @@ function applyDamageTo(
       tempoLogSilenceBioUntilMs: s.nowMs + TEMPO_BONUS_LOG_COOLDOWN_MS,
     };
     s = withLog(s, "Bio momentum hit (+1 damage).", { kind: "tempo" });
+    skipHighPersona = true;
   }
 
   if (
@@ -301,6 +397,10 @@ function applyDamageTo(
     s = withLog(s, "Mecha control bonus: extra shield stripped.", {
       kind: "tempo",
     });
+  }
+
+  if (bonusStrip > 0) {
+    s = withLog(s, "\u200b", { evolutionCue: "shield_strip_crack" });
   }
 
   if (
@@ -364,6 +464,12 @@ function applyDamageTo(
     }
   }
 
+  s = appendTempoFightStyleNarrative(s, {
+    attackerIdx,
+    targetIdx,
+    grossMit,
+    skipHighPersona,
+  });
   s = evaluateWinner(s);
   return s;
 }
@@ -423,7 +529,9 @@ function evaluateWinner(state: ArenaState): ArenaState {
         {
           id: `win-${state.nowMs}`,
           atMs: state.nowMs,
-          message: "You were defeated.",
+          message: shouldRunDummyAi(state.opponentController)
+            ? "Player 1 is down. Defeat."
+            : "Player 1 is down. Player 2 wins.",
         },
       ].slice(-MAX_LOG),
     };
@@ -476,7 +584,9 @@ function evaluateWinner(state: ArenaState): ArenaState {
         {
           id: `win-${state.nowMs}`,
           atMs: state.nowMs,
-          message: "Training dummy destroyed. Victory!",
+          message: shouldRunDummyAi(state.opponentController)
+            ? "Training opponent down. Player 1 wins."
+            : "Player 2 is down. Player 1 wins.",
         },
       ].slice(-MAX_LOG),
     };
@@ -485,6 +595,13 @@ function evaluateWinner(state: ArenaState): ArenaState {
       `Tempo rises to ${formatTempoForLog(s.combatTempo)}.`,
       { kind: "tempo" },
     );
+    const streakRep = reputationStreakLogLine(
+      nextStreak,
+      reputationForArenaFighter(s, 0).title,
+    );
+    if (streakRep) {
+      s = withLog(s, streakRep, { kind: "reputation" });
+    }
     for (const line of logLines) {
       s = withLog(s, line);
     }
@@ -519,6 +636,8 @@ function tickFighter(
     matchModifier: MatchModifierId;
     /** Current arena clock after this frame’s time step (for unstable resource phase). */
     arenaNowMs: number;
+    /** Run-wide tempo: adjusts player cooldown pacing only (feel). */
+    combatTempo: number;
   },
 ): { fighter: FighterState; logs: string[] } {
   const def = fighterDef(f);
@@ -540,6 +659,9 @@ function tickFighter(
   }
   if (opts.matchModifier === "faster_cooldowns") {
     cdDt *= MATCH_FASTER_COOLDOWNS_MULT;
+  }
+  if (opts.isPlayerTick) {
+    cdDt *= tempoPlayerCooldownMultiplier(opts.combatTempo);
   }
 
   const next = { ...f, cooldowns: tickCooldowns(f.cooldowns, cdDt) };
@@ -564,7 +686,12 @@ function tickFighter(
 
   if (allowRegen) {
     next.resource = clampResource(
-      next.resource + (def.resourceRegenPerSec * resMult * dtMs) / 1000,
+      next.resource +
+        (def.resourceRegenPerSec *
+          resMult *
+          stanceResourceRegenMult(next.combatStance) *
+          dtMs) /
+          1000,
       next.resourceMax,
     );
   }
@@ -596,38 +723,39 @@ function tickFighter(
   return { fighter: next, logs };
 }
 
-function shiftPlayerHorizontal(
+function shiftFighterHorizontal(
   state: ArenaState,
+  fighterIdx: 0 | 1,
   direction: -1 | 1,
   dtMs: number,
 ): ArenaState {
   if (state.winner != null) return state;
-  const player = state.fighters[0];
-  if (player.hp <= 0 || player.blocking) return state;
-  const def = fighterDef(player);
+  const f = state.fighters[fighterIdx];
+  if (f.hp <= 0 || f.blocking) return state;
+  const def = fighterDef(f);
   const next = structuredClone(state) as ArenaState;
-  const p = next.fighters[0];
+  const p = next.fighters[fighterIdx];
   p.x = clamp(
     p.x + direction * def.moveSpeedPerSec * (dtMs / 1000),
     0,
     ARENA_WIDTH,
   );
-  p.facing = resolveFacing(p, next.fighters[1]);
+  p.facing = resolveFacing(p, next.fighters[fighterIdx === 0 ? 1 : 0]);
   return next;
 }
 
 function moveLeft(state: ArenaState, dtMs: number): ArenaState {
-  return shiftPlayerHorizontal(state, -1, dtMs);
+  return shiftFighterHorizontal(state, 0, -1, dtMs);
 }
 
 function moveRight(state: ArenaState, dtMs: number): ArenaState {
-  return shiftPlayerHorizontal(state, 1, dtMs);
+  return shiftFighterHorizontal(state, 0, 1, dtMs);
 }
 
-function dash(state: ArenaState): ArenaState {
+function dashFrom(state: ArenaState, attackerIdx: 0 | 1): ArenaState {
   if (state.winner != null) return state;
   const next = structuredClone(state) as ArenaState;
-  const player = next.fighters[0];
+  const player = next.fighters[attackerIdx];
   const def = fighterDef(player);
   if (player.hp <= 0) return state;
   if (player.cooldowns.dash > 0) return state;
@@ -644,28 +772,37 @@ function dash(state: ArenaState): ArenaState {
   return s;
 }
 
-function basicAttack(state: ArenaState): ArenaState {
-  if (state.winner != null) return state;
-  const player = state.fighters[0];
-  const opponent = state.fighters[1];
-  const def = fighterDef(player);
-  if (player.hp <= 0) return state;
-  if (player.cooldowns.attack > 0) return state;
+function dash(state: ArenaState): ArenaState {
+  return dashFrom(state, 0);
+}
 
-  if (!isWithinRange(player, opponent, def.attackRange)) {
-    return withLog(state, `${player.label} attacked — out of range.`);
+function basicAttackFrom(state: ArenaState, attackerIdx: 0 | 1): ArenaState {
+  if (state.winner != null) return state;
+  const targetIdx = (attackerIdx === 0 ? 1 : 0) as 0 | 1;
+  const attacker = state.fighters[attackerIdx];
+  const target = state.fighters[targetIdx];
+  const def = fighterDef(attacker);
+  if (attacker.hp <= 0) return state;
+  if (attacker.cooldowns.attack > 0) return state;
+
+  if (!isWithinRange(attacker, target, def.attackRange)) {
+    return withLog(state, `${attacker.label} attacked — out of range.`);
   }
 
   const next = structuredClone(state) as ArenaState;
-  const p = next.fighters[0];
+  const p = next.fighters[attackerIdx];
   const bonus = p.damageBonusNextAttack;
   p.damageBonusNextAttack = 0;
   p.cooldowns.attack = def.attackCooldownMs;
   let s = withLog(next, `${p.label} attacked.`);
   const strike =
     def.attackDamage + bonus + bioFuryDamageBonus(p, state.nowMs);
-  s = applyDamageTo(s, 0, 1, strike, "hit");
+  s = applyDamageTo(s, attackerIdx, targetIdx, strike, "hit");
   return s;
+}
+
+function basicAttack(state: ArenaState): ArenaState {
+  return basicAttackFrom(state, 0);
 }
 
 /**
@@ -713,12 +850,16 @@ function applyAbilityEffect(
       const p = state.fighters[actorIdx];
       const before = p.hp;
       let healAmt = ABILITY_HEAL_FLAT;
+      let sustainEvolutionHeal = false;
       if (actorIdx === 0) {
         const canon = state.fighters[0].fighterDefinition.canonCharacterId;
         const profile =
           state.fighterProfiles[canon] ?? createEmptyFighterProfile(canon);
         const evo = getProfileEvolution(profile);
-        if (evo.path === "sustain") healAmt += evo.healBonus;
+        if (evo.path === "sustain" && evo.healBonus > 0) {
+          healAmt += evo.healBonus;
+          sustainEvolutionHeal = true;
+        }
       }
       const pureTempoHeal =
         state.combatTempo <= -2 && p.fighterDefinition.faction === "Pure";
@@ -729,6 +870,9 @@ function applyAbilityEffect(
         state,
         `${p.label} healed ${gained} HP with ${ability.name}.`,
       );
+      if (actorIdx === 0 && sustainEvolutionHeal && gained > 0) {
+        s = withLog(s, "\u200b", { evolutionCue: "heal_bonus_pulse" });
+      }
       if (
         pureTempoHeal &&
         gained > 0 &&
@@ -836,12 +980,16 @@ function applyFactionAbilityFollowup(
   if (faction === "Pure" && actor.hp > 0) {
     const before = actor.hp;
     let mend = PURE_ABILITY_HEAL;
+    let sustainMendEvolution = false;
     if (actorIdx === 0) {
       const canon = state.fighters[0].fighterDefinition.canonCharacterId;
       const profile =
         state.fighterProfiles[canon] ?? createEmptyFighterProfile(canon);
       const evo = getProfileEvolution(profile);
-      if (evo.path === "sustain") mend += evo.healBonus;
+      if (evo.path === "sustain" && evo.healBonus > 0) {
+        mend += evo.healBonus;
+        sustainMendEvolution = true;
+      }
     }
     const pureTempoMend =
       state.combatTempo <= -2 && actor.fighterDefinition.faction === "Pure";
@@ -866,6 +1014,9 @@ function applyFactionAbilityFollowup(
       };
       s = withLog(s, "Pure recovery bonus (+1 heal).", { kind: "tempo" });
     }
+    if (sustainMendEvolution && actorIdx === 0 && actor.hp > before) {
+      s = withLog(s, "\u200b", { evolutionCue: "heal_bonus_pulse" });
+    }
   }
 
   if (faction === "Black City" && actor.hp > 0) {
@@ -883,11 +1034,27 @@ function performPlayerAbility(state: ArenaState, slot: 0 | 1): ArenaState {
   return performFighterAbility(state, 0, slot);
 }
 
+function opponentDiscreteBasicAttack(state: ArenaState): ArenaState {
+  if (!isOpponentHumanController(state.opponentController)) return state;
+  return basicAttackFrom(state, 1);
+}
+
+function opponentDiscreteDash(state: ArenaState): ArenaState {
+  if (!isOpponentHumanController(state.opponentController)) return state;
+  return dashFrom(state, 1);
+}
+
+function opponentDiscreteAbility(state: ArenaState, slot: 0 | 1): ArenaState {
+  if (!isOpponentHumanController(state.opponentController)) return state;
+  return performFighterAbility(state, 1, slot);
+}
+
 function shiftOpponentTowardPlayer(
   state: ArenaState,
   dtMs: number,
 ): ArenaState {
   if (state.winner != null) return state;
+  if (!shouldShiftDummyTowardPlayer(state.opponentController)) return state;
   const opp = state.fighters[1];
   const pl = state.fighters[0];
   if (!opp.isDummy || opp.hp <= 0) return state;
@@ -906,24 +1073,9 @@ function shiftOpponentTowardPlayer(
   return next;
 }
 
+/** Training dummy only — human P2 uses {@link basicAttackFrom} via input. */
 function opponentBasicAttack(state: ArenaState): ArenaState {
-  if (state.winner != null) return state;
-  const opp = state.fighters[1];
-  const pl = state.fighters[0];
-  const def = fighterDef(opp);
-  if (!opp.isDummy || opp.hp <= 0 || opp.cooldowns.attack > 0) return state;
-  if (!isWithinRange(opp, pl, def.attackRange)) return state;
-
-  const next = structuredClone(state) as ArenaState;
-  const o = next.fighters[1];
-  const bonus = o.damageBonusNextAttack;
-  o.damageBonusNextAttack = 0;
-  o.cooldowns.attack = def.attackCooldownMs;
-  let s = withLog(next, `${o.label} attacked.`);
-  const strike =
-    def.attackDamage + bonus + bioFuryDamageBonus(o, state.nowMs);
-  s = applyDamageTo(s, 1, 0, strike, "hit");
-  return s;
+  return basicAttackFrom(state, 1);
 }
 
 function spendReinforceBody(state: ArenaState): ArenaState {
@@ -993,6 +1145,7 @@ function spendBloodRitual(state: ArenaState): ArenaState {
 }
 
 function applyDummyCombatStep(state: ArenaState): ArenaState {
+  if (!shouldRunDummyAi(state.opponentController)) return state;
   const intent = decideDummyCombatIntent(state);
   switch (intent.kind) {
     case "none":
@@ -1029,8 +1182,35 @@ export function arenaReducer(
           winStreak: state.winStreak,
           fighterProfiles: state.fighterProfiles,
           combatTempo: state.combatTempo,
+          opponentController: state.opponentController,
+          combatStances: [DEFAULT_COMBAT_STANCE, DEFAULT_COMBAT_STANCE],
         }),
       );
+    case "SET_OPPONENT_CONTROLLER":
+      return ensurePlayerFighterProfile(
+        createInitialArenaState(state.playerFighter.id, state.enemyFighter.id, {
+          resources: state.resources,
+          pendingHpPenalty: state.pendingHpPenalty,
+          lastMatchResult: null,
+          fighterProgress: state.fighterProgress,
+          nextMatchHpBonus: state.nextMatchHpBonus,
+          nextMatchAttackBonus: state.nextMatchAttackBonus,
+          resourceFocus: state.resourceFocus,
+          /** Keep same match index: `createInitialArenaState` does `carry + 1`. */
+          matchOrdinal: state.matchOrdinal - 1,
+          winStreak: state.winStreak,
+          fighterProfiles: state.fighterProfiles,
+          combatTempo: state.combatTempo,
+          opponentController: action.controller,
+          combatStances: [DEFAULT_COMBAT_STANCE, DEFAULT_COMBAT_STANCE],
+        }),
+      );
+    case "SET_COMBAT_STANCE": {
+      if (state.winner != null) return state;
+      const next = structuredClone(state) as ArenaState;
+      next.fighters[action.fighterIdx].combatStance = action.stance;
+      return next;
+    }
     case "SPEND_REINFORCE_BODY":
       return spendReinforceBody(state);
     case "SPEND_BRIBE_HANDLER":
@@ -1045,6 +1225,12 @@ export function arenaReducer(
       return dash(state);
     case "USE_ABILITY":
       return performPlayerAbility(state, action.slot);
+    case "OPPONENT_BASIC_ATTACK":
+      return opponentDiscreteBasicAttack(state);
+    case "OPPONENT_DASH":
+      return opponentDiscreteDash(state);
+    case "OPPONENT_USE_ABILITY":
+      return opponentDiscreteAbility(state, action.slot);
     case "BLOCK_START":
       return startBlock(state);
     case "BLOCK_END":
@@ -1064,6 +1250,7 @@ export function arenaReducer(
         fighters: structuredClone(state.fighters) as ArenaState["fighters"],
       };
       const [p0, p1] = next.fighters;
+      const oppHuman = isOpponentHumanController(next.opponentController);
 
       const t0 = tickFighter(p0, dt, {
         regen: true,
@@ -1071,13 +1258,16 @@ export function arenaReducer(
         input: action.input,
         matchModifier: next.matchModifier,
         arenaNowMs: next.nowMs,
+        combatTempo: next.combatTempo,
       });
       const t1 = tickFighter(p1, dt, {
-        regen: false,
-        isPlayerTick: false,
-        dummyResourceRegen: p1.isDummy,
+        regen: oppHuman,
+        isPlayerTick: oppHuman,
+        input: oppHuman ? action.opponentInput : undefined,
+        dummyResourceRegen: !oppHuman && p1.isDummy,
         matchModifier: next.matchModifier,
         arenaNowMs: next.nowMs,
+        combatTempo: next.combatTempo,
       });
       next.fighters[0] = t0.fighter;
       next.fighters[1] = t1.fighter;
@@ -1100,6 +1290,16 @@ export function arenaReducer(
       }
 
       stepped = shiftOpponentTowardPlayer(stepped, dt);
+
+      if (oppHuman && stepped.fighters[1].hp > 0) {
+        const om = action.opponentInput.move;
+        if (om === -1 && !stepped.fighters[1].blocking) {
+          stepped = shiftFighterHorizontal(stepped, 1, -1, dt);
+        } else if (om === 1 && !stepped.fighters[1].blocking) {
+          stepped = shiftFighterHorizontal(stepped, 1, 1, dt);
+        }
+      }
+
       stepped.fighters[1].facing = resolveFacing(
         stepped.fighters[1],
         stepped.fighters[0],

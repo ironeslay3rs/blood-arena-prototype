@@ -11,10 +11,16 @@ export type CardCombatFeedback = {
   showTargetedCaption: boolean;
   traitLabel: string | null;
   damageNumber: number | null;
+  /** Evolution aggression — first-hit bonus connecting (opponent card). */
+  evolutionFirstHitFlash: boolean;
+  /** Evolution sustain — bonus heal (player card). */
+  evolutionHealPulse: boolean;
+  /** Evolution control — bonus shield tear (opponent card, shield row). */
+  evolutionShieldCrack: boolean;
 };
 
 export type ArenaCombatFeedback = {
-  /** Brief pulse on dummy sprite when they attack */
+  /** Brief pulse on fighter 1 (opponent) sprite when they attack */
   pulseOpponent: boolean;
 };
 
@@ -29,6 +35,9 @@ const emptyCard: CardCombatFeedback = {
   showTargetedCaption: false,
   traitLabel: null,
   damageNumber: null,
+  evolutionFirstHitFlash: false,
+  evolutionHealPulse: false,
+  evolutionShieldCrack: false,
 };
 
 function traitTagForAbility(
@@ -101,6 +110,8 @@ function parseDamageLine(
 export function useCombatFeedback(
   log: CombatLogEntry[],
   fighters: [FighterState, FighterState],
+  /** Same factor as `tempoCombatAnimationSpeedMultiplier` — scales JS-timed beats to match CSS. */
+  tempoAnimSpeed: number = 1,
 ) {
   const [playerCard, setPlayerCard] = useState<CardCombatFeedback>(emptyCard);
   const [opponentCard, setOpponentCard] = useState<CardCombatFeedback>(emptyCard);
@@ -112,6 +123,8 @@ export function useCombatFeedback(
   const didInitCursorRef = useRef(false);
   const fightersRef = useRef(fighters);
   fightersRef.current = fighters;
+  const tempoAnimSpeedRef = useRef(tempoAnimSpeed);
+  tempoAnimSpeedRef.current = tempoAnimSpeed;
   const timeoutIdsRef = useRef<ReturnType<typeof setTimeout>[]>([]);
   const seqRef = useRef(0);
 
@@ -153,6 +166,12 @@ export function useCombatFeedback(
 
     if (newEntries.length === 0) return;
 
+    const spd = Math.max(
+      0.35,
+      Math.min(1.65, tempoAnimSpeedRef.current || 1),
+    );
+    const beat = (ms: number) => ms / spd;
+
     let pendingTrait: string | null = null;
 
     const runAiSequence = (damage: number, trait: string) => {
@@ -166,9 +185,9 @@ export function useCombatFeedback(
           targetedGlow: true,
           showTargetedCaption: true,
         });
-        setOpponentCard(emptyCard);
+        setOpponentCard({ ...emptyCard });
         setArena({ pulseOpponent: false });
-      }, PHASE_TARGET_MS);
+      }, beat(PHASE_TARGET_MS));
 
       schedule(() => {
         if (seqRef.current !== mySeq) return;
@@ -181,12 +200,12 @@ export function useCombatFeedback(
           ...emptyCard,
           traitLabel: trait,
         });
-      }, PHASE_TRAIT_MS);
+      }, beat(PHASE_TRAIT_MS));
 
       schedule(() => {
         if (seqRef.current !== mySeq) return;
         setArena({ pulseOpponent: true });
-      }, PHASE_ATTACK_MS);
+      }, beat(PHASE_ATTACK_MS));
 
       schedule(() => {
         if (seqRef.current !== mySeq) return;
@@ -197,32 +216,71 @@ export function useCombatFeedback(
         }));
         setOpponentCard((o) => ({ ...o, traitLabel: trait }));
         setArena({ pulseOpponent: false });
-      }, PHASE_DAMAGE_MS);
+      }, beat(PHASE_DAMAGE_MS));
 
       schedule(() => {
         if (seqRef.current !== mySeq) return;
         setPlayerCard(emptyCard);
         setOpponentCard(emptyCard);
         setArena({ pulseOpponent: false });
-      }, PHASE_CLEAR_MS);
+      }, beat(PHASE_CLEAR_MS));
     };
 
-    const runPlayerHit = (damage: number) => {
+    const runPlayerHit = (damage: number, firstHitEvolution?: boolean) => {
       const mySeq = ++seqRef.current;
       clearAllTimeouts();
       schedule(() => {
         if (seqRef.current !== mySeq) return;
-        setOpponentCard({ ...emptyCard, damageNumber: damage });
+        setOpponentCard({
+          ...emptyCard,
+          damageNumber: damage,
+          evolutionFirstHitFlash: firstHitEvolution ?? false,
+        });
         setPlayerCard(emptyCard);
         setArena({ pulseOpponent: false });
-      }, 120);
+      }, beat(120));
+      if (firstHitEvolution) {
+        schedule(() => {
+          if (seqRef.current !== mySeq) return;
+          setOpponentCard((o) => ({ ...o, evolutionFirstHitFlash: false }));
+        }, beat(480));
+      }
       schedule(() => {
         if (seqRef.current !== mySeq) return;
         setOpponentCard(emptyCard);
-      }, 1000);
+      }, beat(1000));
     };
 
-    const processEntry = (entry: CombatLogEntry) => {
+    /** Does not bump seq — avoids cancelling scheduled damage feedback in the same log batch. */
+    const pulseHealEvolution = () => {
+      schedule(() => {
+        setPlayerCard((p) => ({ ...p, evolutionHealPulse: true }));
+      }, 0);
+      schedule(() => {
+        setPlayerCard((p) => ({ ...p, evolutionHealPulse: false }));
+      }, beat(520));
+    };
+
+    const pulseShieldCrack = () => {
+      schedule(() => {
+        setOpponentCard((o) => ({ ...o, evolutionShieldCrack: true }));
+      }, 0);
+      schedule(() => {
+        setOpponentCard((o) => ({ ...o, evolutionShieldCrack: false }));
+      }, beat(600));
+    };
+
+    const processEntry = (entry: CombatLogEntry, i: number) => {
+      if (entry.kind === "tempo" && !entry.evolutionCue) return;
+      if (entry.evolutionCue === "heal_bonus_pulse") {
+        pulseHealEvolution();
+        return;
+      }
+      if (entry.evolutionCue === "shield_strip_crack") {
+        pulseShieldCrack();
+        return;
+      }
+      if (entry.evolutionCue === "first_hit_impact") return;
       if (entry.kind === "tempo") return;
 
       const msg = entry.message;
@@ -265,7 +323,10 @@ export function useCombatFeedback(
       }
 
       if (dmg.attacker === youLabel && dmg.target === oppLabel) {
-        runPlayerHit(dmg.amount);
+        const nextE = newEntries[i + 1];
+        const firstHitEvolution =
+          nextE?.evolutionCue === "first_hit_impact" ? true : false;
+        runPlayerHit(dmg.amount, firstHitEvolution);
         pendingTrait = null;
         return;
       }
@@ -273,8 +334,18 @@ export function useCombatFeedback(
       pendingTrait = null;
     };
 
-    for (const e of newEntries) {
-      processEntry(e);
+    for (let i = 0; i < newEntries.length; i++) {
+      const e = newEntries[i]!;
+      const prev = newEntries[i - 1];
+      if (
+        e.evolutionCue === "first_hit_impact" &&
+        prev &&
+        parseDamageLine(prev.message, youLabel, oppLabel)?.attacker ===
+          youLabel
+      ) {
+        continue;
+      }
+      processEntry(e, i);
     }
 
     return () => {

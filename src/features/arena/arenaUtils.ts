@@ -5,6 +5,10 @@ import type {
   FighterDefinition,
   FighterState,
 } from "./arenaTypes";
+import {
+  DEFAULT_COMBAT_STANCE,
+  type CombatStanceId,
+} from "./combatStance";
 import { CLASS_DATA, type ClassDefinition } from "./classData";
 import { levelStatBonuses } from "./fighterProgress";
 
@@ -120,6 +124,7 @@ export function makeFighterFromDefinition(
     progressionLevel?: number;
     /** One-match prep bonus (blood ritual); cleared after spawn. */
     flatAttackBonus?: number;
+    combatStance?: CombatStanceId;
   },
 ): FighterState {
   const classId = combatKitForFaction(definition.faction);
@@ -162,5 +167,6 @@ export function makeFighterFromDefinition(
     pureSoulLogSilenceUntilMs: 0,
     nearDeathFlavorLogged: false,
     openingStrikeConsumed: false,
+    combatStance: opts.combatStance ?? DEFAULT_COMBAT_STANCE,
   };
 }

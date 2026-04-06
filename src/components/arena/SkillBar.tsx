@@ -40,11 +40,21 @@ export function SkillBar({
 
   return (
     <section className="rounded-lg border border-zinc-200 p-4 dark:border-zinc-800">
-      <p className="mb-3 text-xs font-medium text-zinc-500">
-        {
-          "Controls: A / D or ← / → move · Shift dash · F attack · hold G block · 1 / 2 skills — or use the buttons (block: hold)"
-        }
-      </p>
+      <div className="mb-3 space-y-1.5 text-xs leading-relaxed text-zinc-500">
+        <p>
+          <span className="font-semibold text-zinc-600 dark:text-zinc-400">
+            Player 1
+          </span>{" "}
+          — A/D or ←/→ · Shift dash · F attack · hold G block · 1/2 skills (buttons
+          below; hold block).
+        </p>
+        <p>
+          <span className="font-semibold text-zinc-600 dark:text-zinc-400">
+            Player 2
+          </span>{" "}
+          — J/L move · O dash · U attack · I block · [ ] skills (local PvP).
+        </p>
+      </div>
       <div className="flex flex-wrap gap-2">
         <button
           type="button"
