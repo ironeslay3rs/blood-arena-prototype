@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { startTransition, useEffect, useState } from "react";
 import { readArenaResourcesForCardTrial } from "@/features/arena/arenaTrialBridge";
 import { createTrialFromArena } from "./trialState";
 import type { TrialState } from "./types";
@@ -11,7 +11,7 @@ export function useTrialGame() {
 
   useEffect(() => {
     const resources = readArenaResourcesForCardTrial();
-    setState(createTrialFromArena(resources));
+    startTransition(() => setState(createTrialFromArena(resources)));
   }, []);
 
   return { ready: state != null, state };

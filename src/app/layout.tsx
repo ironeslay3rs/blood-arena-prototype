@@ -13,9 +13,12 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Blood Arena Prototype",
+  title: {
+    default: "Blood Arena",
+    template: "%s · Blood Arena",
+  },
   description:
-    "Browser PvP fighter — local hot-seat first, optional training vs AI.",
+    "Hot-seat PvP fighter prototype — stance, spacing, and tempo. Optional training vs AI; readable fights first.",
 };
 
 export default function RootLayout({

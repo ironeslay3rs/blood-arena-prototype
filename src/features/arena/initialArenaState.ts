@@ -167,6 +167,7 @@ export function createInitialArenaState(
     tempoLogSilenceMechaControlUntilMs: 0,
     tempoNarrativeSilenceUntilMs: 0,
     opponentController,
+    logSeq: 0,
   };
 
   const repIntro = matchIntroReputationLines(draft).map((message, i) => ({
@@ -176,9 +177,11 @@ export function createInitialArenaState(
     kind: "reputation" as const,
   }));
 
+  const bootLog = [...draft.log, ...repIntro];
   return {
     ...draft,
-    log: [...draft.log, ...repIntro],
+    log: bootLog,
+    logSeq: bootLog.length,
   };
 }
 

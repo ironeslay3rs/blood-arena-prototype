@@ -8,6 +8,7 @@ import {
   STANCE_ORDER,
   STANCE_UI,
 } from "@/features/arena/combatStance";
+import { CLIMAX_METER_MAX } from "@/features/arena/climaxMeterConfig";
 import { fighterDef } from "@/features/arena/arenaUtils";
 import type { CardCombatFeedback } from "./useCombatFeedback";
 
@@ -151,6 +152,13 @@ type FighterPanelProps = {
   stanceChangeLocked?: boolean;
   /** Shown when {@link identity} is absent (e.g. Player 2). */
   reputation?: ReputationSnapshot | null;
+  /** Local PvP: P2 climax controls (meter read from {@link fighter}.climaxMeter). */
+  hotSeatClimax?: {
+    disabled: boolean;
+    onClimax: () => void;
+    /** P2 link line — roster-specific actions (see `cancelRouteConfig`). */
+    linkHint?: string;
+  };
 };
 
 function reputationCardClass(prestige: ReputationSnapshot["prestige"]): string {
@@ -192,10 +200,18 @@ export function FighterPanel({
   onCombatStanceChange,
   stanceChangeLocked,
   reputation,
+  hotSeatClimax,
 }: FighterPanelProps) {
   const def = fighterDef(fighter);
+  const hpRatio = fighter.hpMax > 0 ? fighter.hp / fighter.hpMax : 0;
   const status =
-    fighter.hp <= 0 ? "Down" : fighter.blocking ? "Blocking" : "Ready";
+    fighter.hp <= 0
+      ? "Down"
+      : fighter.blocking
+        ? "Blocking"
+        : hpRatio <= 0.25
+          ? "Critical"
+          : "Ready";
 
   const fb = combatFeedback;
   const outlineClass = fb?.targetedGlow
@@ -210,6 +226,7 @@ export function FighterPanel({
 
   return (
     <article
+      aria-label={`${slotEyebrow}: ${def.displayName}`}
       className={`relative rounded-lg border border-zinc-200 p-4 transition-shadow duration-200 dark:border-zinc-800 ${outlineClass} ${healPulseClass}`}
     >
       {fb?.showTargetedCaption ? (
@@ -351,9 +368,68 @@ export function FighterPanel({
           max={fighter.resourceMax}
           fillClass={def.resourceBarFillClass}
         />
+        {hotSeatClimax ? (
+          <div
+            className="rounded-md border border-violet-500/35 bg-violet-950/15 px-2.5 py-2 dark:border-violet-600/40 dark:bg-violet-950/35"
+            aria-label="Player 2 Climax"
+          >
+            <div className="mb-1 flex items-center justify-between text-[10px] font-semibold uppercase tracking-wider text-violet-200/90">
+              <span>Climax</span>
+              <span className="tabular-nums text-violet-100">
+                {Math.min(CLIMAX_METER_MAX, fighter.climaxMeter)} /{" "}
+                {CLIMAX_METER_MAX}
+              </span>
+            </div>
+            <div className="mb-2 h-2 overflow-hidden rounded-full bg-zinc-900/90 ring-1 ring-violet-500/25">
+              <div
+                className="h-full rounded-full bg-gradient-to-r from-violet-600 via-fuchsia-500 to-amber-300 transition-[width] duration-150 ease-out"
+                style={{
+                  width: `${Math.min(100, (100 * fighter.climaxMeter) / CLIMAX_METER_MAX)}%`,
+                }}
+              />
+            </div>
+            <button
+              type="button"
+              className={`w-full rounded-md px-2 py-1.5 text-center text-xs font-semibold transition enabled:hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40 ${
+                hotSeatClimax.disabled ||
+                fighter.climaxMeter < CLIMAX_METER_MAX
+                  ? "bg-zinc-800 text-zinc-300"
+                  : "bg-gradient-to-br from-violet-700 to-fuchsia-700 text-white shadow-sm shadow-violet-950/40"
+              }`}
+              disabled={
+                hotSeatClimax.disabled ||
+                fighter.climaxMeter < CLIMAX_METER_MAX
+              }
+              onClick={hotSeatClimax.onClimax}
+            >
+              Climax (M)
+            </button>
+            {hotSeatClimax.linkHint && !hotSeatClimax.disabled ? (
+              <p className="mt-1.5 text-center text-[9px] font-semibold uppercase tracking-wide text-emerald-400/95">
+                {hotSeatClimax.linkHint}
+              </p>
+            ) : null}
+          </div>
+        ) : null}
+        <p className="text-[11px] text-zinc-500">
+          Melee reach:{" "}
+          <span className="font-medium tabular-nums text-zinc-700 dark:text-zinc-300">
+            {def.attackRange}
+          </span>{" "}
+          <span className="text-zinc-500">— compare to Gap on the arena</span>
+        </p>
         <p className="text-xs text-zinc-500">
           Status:{" "}
-          <span className="text-zinc-700 dark:text-zinc-300">{status}</span>
+          <span
+            className={
+              status === "Critical"
+                ? "font-semibold text-rose-600 dark:text-rose-400"
+                : "text-zinc-700 dark:text-zinc-300"
+            }
+          >
+            {status}
+            {status === "Critical" ? " — low HP" : ""}
+          </span>
         </p>
       </div>
     </article>

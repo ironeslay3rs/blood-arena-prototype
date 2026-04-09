@@ -40,6 +40,9 @@ type MatchHudProps = {
   onBloodRitual: () => void;
   resourceFocus: ResourceFocusId | null;
   onResourceFocusChange: (focus: ResourceFocusId | null) => void;
+  /** Sound + optional vibration on hits and round start; persists in localStorage. */
+  combatFeedbackEnabled?: boolean;
+  onToggleCombatFeedback?: () => void;
 };
 
 const TEMPO_MIN = -3;
@@ -58,21 +61,21 @@ function tempoFightStyleHeadline(t: number): string {
   return "Even footing";
 }
 
-/** Mechanical reminder + pacing hint (same bonuses as before). */
+/** One line — tempo is a combat feel lever, not a manual. */
 function tempoFightStyleBody(t: number): string {
   if (t >= 2) {
-    return "Burst rhythm—tools and combat motion both run hotter; combat log leans aggressive. Bio strikes +1.";
+    return "Hot rhythm — faster tools & motion. Bio damage spikes.";
   }
   if (t <= -2) {
-    return "Grind rhythm—tools and on-screen recovery both run heavier; combat log leans survival. Pure heals +1.";
+    return "Cold rhythm — heavier recovery. Pure heals spike.";
   }
   if (t >= 1) {
-    return "Slightly faster exchanges—cooldowns and on-screen beats both pick up. No faction tempo bonus yet.";
+    return "Pressing — slightly faster cooldowns & UI beats.";
   }
   if (t <= -1) {
-    return "Slightly heavier recovery—cooldowns and combat motion both ease down. No faction tempo bonus yet.";
+    return "Measured — slightly slower recovery cadence.";
   }
-  return "Neutral—no faction tempo bonus; even pacing.";
+  return "Neutral pacing — no faction tempo swing.";
 }
 
 function tempoPanelTone(t: number): {
@@ -146,6 +149,8 @@ export function MatchHud({
   onBloodRitual,
   resourceFocus,
   onResourceFocusChange,
+  combatFeedbackEnabled = true,
+  onToggleCombatFeedback,
 }: MatchHudProps) {
   const subtitle = matchSubtitle(winner, opponentController);
 
@@ -174,7 +179,10 @@ export function MatchHud({
         <h1 className="text-xl font-bold tracking-tight text-zinc-900 dark:text-zinc-50">
           {title}
         </h1>
-        <p className="mt-1 text-sm text-zinc-500">{subtitle}</p>
+        <p className="mt-1 text-xs leading-snug text-zinc-500 dark:text-zinc-500">
+          PvP-first · one shared screen · stance and spacing decide trades
+        </p>
+        <p className="mt-1.5 text-sm text-zinc-500">{subtitle}</p>
         <div
           className="mt-2 max-w-md rounded-lg border border-amber-200/90 bg-amber-50/60 px-3 py-2 dark:border-amber-800/50 dark:bg-amber-950/35"
           aria-label="Your reputation"
@@ -189,19 +197,74 @@ export function MatchHud({
             {playerReputation.descriptor}
           </p>
         </div>
-        <p className="mt-2 text-xs font-medium uppercase tracking-wide text-zinc-500">
-          Black Market bridge (not a full economy)
-        </p>
-        <p className="mt-1 text-sm text-zinc-700 dark:text-zinc-300">
-          Credits {r.credits} · Ironheart {r.ironheart} · Blood chits {r.bloodChits}
-        </p>
-        <p className="mt-0.5 text-sm text-zinc-700 dark:text-zinc-300">
-          Lumens {r.lumens} · Scrap {r.scrap} · Parts {r.parts}
-        </p>
-        <ResourceFocusToolbar
-          focus={resourceFocus}
-          onFocusChange={onResourceFocusChange}
-        />
+        <details className="mt-3 max-w-lg rounded-lg border border-zinc-200 bg-zinc-50/50 dark:border-zinc-700 dark:bg-zinc-900/40">
+          <summary className="cursor-pointer select-none px-3 py-2 text-xs font-medium text-zinc-600 dark:text-zinc-400">
+            Between-match resources & spending (optional meta)
+          </summary>
+          <div className="border-t border-zinc-200 px-3 pb-3 pt-2 dark:border-zinc-700">
+            <p className="text-xs text-zinc-500">
+              Black Market bridge — not a full economy. Collapse this to focus on the fight.
+            </p>
+            <p className="mt-2 text-sm text-zinc-700 dark:text-zinc-300">
+              Credits {r.credits} · Ironheart {r.ironheart} · Blood chits{" "}
+              {r.bloodChits}
+            </p>
+            <p className="mt-0.5 text-sm text-zinc-700 dark:text-zinc-300">
+              Lumens {r.lumens} · Scrap {r.scrap} · Parts {r.parts}
+            </p>
+            <ResourceFocusToolbar
+              focus={resourceFocus}
+              onFocusChange={onResourceFocusChange}
+            />
+            <div className="mt-3 rounded-md border border-zinc-200 p-3 dark:border-zinc-700">
+              <p className="text-xs font-medium text-zinc-600 dark:text-zinc-400">
+                Arena spending
+              </p>
+              <p className="mt-1 text-xs text-zinc-500">{spendHint}</p>
+              <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:flex-wrap">
+                <button
+                  type="button"
+                  disabled={!canReinforce}
+                  title={`${REINFORCE_IRONHEART_COST} ironheart → +${REINFORCE_HP_BONUS} max HP on next reset`}
+                  className="rounded border border-zinc-300 px-2 py-1.5 text-left text-xs disabled:opacity-40 dark:border-zinc-600 dark:text-zinc-200"
+                  onClick={onReinforceBody}
+                >
+                  <span className="font-medium">Reinforce body</span>
+                  <span className="block text-zinc-500">
+                    {REINFORCE_IRONHEART_COST} ironheart · +{REINFORCE_HP_BONUS}{" "}
+                    max HP next match
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  disabled={!canBribe}
+                  title={`${BRIBE_CREDITS_COST} credits → −${BRIBE_PENALTY_REDUCTION} pending HP penalty`}
+                  className="rounded border border-zinc-300 px-2 py-1.5 text-left text-xs disabled:opacity-40 dark:border-zinc-600 dark:text-zinc-200"
+                  onClick={onBribeHandler}
+                >
+                  <span className="font-medium">Bribe handler</span>
+                  <span className="block text-zinc-500">
+                    {BRIBE_CREDITS_COST} credits · −{BRIBE_PENALTY_REDUCTION}{" "}
+                    max-HP penalty
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  disabled={!canRitual}
+                  title={`${RITUAL_BLOOD_CHITS_COST} blood chits → +${RITUAL_ATTACK_BONUS} attack next reset`}
+                  className="rounded border border-zinc-300 px-2 py-1.5 text-left text-xs disabled:opacity-40 dark:border-zinc-600 dark:text-zinc-200"
+                  onClick={onBloodRitual}
+                >
+                  <span className="font-medium">Blood ritual</span>
+                  <span className="block text-zinc-500">
+                    {RITUAL_BLOOD_CHITS_COST} blood chits · +{RITUAL_ATTACK_BONUS}{" "}
+                    damage next match
+                  </span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </details>
 
         <aside
           className={`mt-3 max-w-sm rounded-lg border px-3 py-2.5 ${tempoTone.card}`}
@@ -241,7 +304,7 @@ export function MatchHud({
         </p>
         {showOutcome && lastMatchResult === "win" ? (
           <p className="mt-1 text-sm text-emerald-700 dark:text-emerald-400">
-            Result: win — includes +{WIN_CREDIT_REWARD} credit stipend (totals above)
+            Result: win — +{WIN_CREDIT_REWARD} credits (see Between-match resources)
           </p>
         ) : null}
         {showOutcome && lastMatchResult === "loss" ? (
@@ -255,63 +318,35 @@ export function MatchHud({
             Penalty active: −{pendingHpPenalty} max HP this match.
           </p>
         ) : null}
-
-        <div className="mt-4 rounded-md border border-zinc-200 p-3 dark:border-zinc-700">
-          <p className="text-xs font-medium text-zinc-600 dark:text-zinc-400">
-            Arena spending
-          </p>
-          <p className="mt-1 text-xs text-zinc-500">{spendHint}</p>
-          <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:flex-wrap">
-            <button
-              type="button"
-              disabled={!canReinforce}
-              title={`${REINFORCE_IRONHEART_COST} ironheart → +${REINFORCE_HP_BONUS} max HP on next reset`}
-              className="rounded border border-zinc-300 px-2 py-1.5 text-left text-xs disabled:opacity-40 dark:border-zinc-600 dark:text-zinc-200"
-              onClick={onReinforceBody}
-            >
-              <span className="font-medium">Reinforce body</span>
-              <span className="block text-zinc-500">
-                {REINFORCE_IRONHEART_COST} ironheart · +{REINFORCE_HP_BONUS} max
-                HP next match
-              </span>
-            </button>
-            <button
-              type="button"
-              disabled={!canBribe}
-              title={`${BRIBE_CREDITS_COST} credits → −${BRIBE_PENALTY_REDUCTION} pending HP penalty`}
-              className="rounded border border-zinc-300 px-2 py-1.5 text-left text-xs disabled:opacity-40 dark:border-zinc-600 dark:text-zinc-200"
-              onClick={onBribeHandler}
-            >
-              <span className="font-medium">Bribe handler</span>
-              <span className="block text-zinc-500">
-                {BRIBE_CREDITS_COST} credits · −{BRIBE_PENALTY_REDUCTION} max-HP
-                penalty
-              </span>
-            </button>
-            <button
-              type="button"
-              disabled={!canRitual}
-              title={`${RITUAL_BLOOD_CHITS_COST} blood chits → +${RITUAL_ATTACK_BONUS} attack next reset`}
-              className="rounded border border-zinc-300 px-2 py-1.5 text-left text-xs disabled:opacity-40 dark:border-zinc-600 dark:text-zinc-200"
-              onClick={onBloodRitual}
-            >
-              <span className="font-medium">Blood ritual</span>
-              <span className="block text-zinc-500">
-                {RITUAL_BLOOD_CHITS_COST} blood chits · +{RITUAL_ATTACK_BONUS}{" "}
-                damage next match
-              </span>
-            </button>
-          </div>
-        </div>
       </div>
       <div className="flex flex-wrap items-start gap-3">
         <button
           type="button"
+          title="After a round ends or if Player 1 is down: R, Esc, or Enter also reset"
           className="rounded-md border border-zinc-300 px-3 py-1.5 text-sm font-medium text-zinc-800 transition hover:bg-zinc-100 dark:border-zinc-600 dark:text-zinc-200 dark:hover:bg-zinc-800"
           onClick={onResetMatch}
         >
           Reset match
         </button>
+        {onToggleCombatFeedback ? (
+          <button
+            type="button"
+            aria-pressed={combatFeedbackEnabled}
+            aria-label={
+              combatFeedbackEnabled
+                ? "Turn off combat feedback sounds"
+                : "Turn on combat feedback sounds"
+            }
+            className={`rounded-md border px-3 py-1.5 text-sm font-medium transition ${
+              combatFeedbackEnabled
+                ? "border-emerald-600/70 bg-emerald-50 text-emerald-900 hover:bg-emerald-100 dark:border-emerald-600/50 dark:bg-emerald-950/40 dark:text-emerald-100 dark:hover:bg-emerald-950/60"
+                : "border-zinc-300 text-zinc-600 hover:bg-zinc-100 dark:border-zinc-600 dark:text-zinc-400 dark:hover:bg-zinc-800"
+            }`}
+            onClick={onToggleCombatFeedback}
+          >
+            Combat feedback: {combatFeedbackEnabled ? "On" : "Off"}
+          </button>
+        ) : null}
       </div>
     </header>
   );

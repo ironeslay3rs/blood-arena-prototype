@@ -1,5 +1,6 @@
 import type { CanonCharacterId } from "@/features/shared/canonCharacters";
 import type { CombatStanceId } from "./combatStance";
+import type { ArenaInputFrame } from "./onlineNetplayStub";
 
 export type { CombatStanceId } from "./combatStance";
 
@@ -52,6 +53,14 @@ export interface AbilityDefinition {
   effectType: AbilityEffectType;
 }
 
+/** Optional super melee tuning — overrides faction defaults in `climaxStrikeProfile`. */
+export interface FighterClimaxOverride {
+  damageMult: number;
+  flatBonus: number;
+  /** Shown after “unleashes …”; must end with `Climax` for combat-juice parsers. */
+  logName: string;
+}
+
 /** Card-game roster row: lore + baseline stats + two signature abilities (data only). */
 export interface FighterDefinition {
   id: FighterId;
@@ -65,6 +74,8 @@ export interface FighterDefinition {
   resourceType: FighterResourceType;
   abilities: readonly [AbilityDefinition, AbilityDefinition];
   passive: string;
+  /** Card-specific Climax damage + log; when omitted, faction profile is used. */
+  climaxOverride?: FighterClimaxOverride;
 }
 
 export type FighterRole = "player" | "opponent";
@@ -113,6 +124,21 @@ export interface FighterState {
   nearDeathFlavorLogged: boolean;
   /** Cleared each spawn; profile evolution “first hit” uses this flag. */
   openingStrikeConsumed: boolean;
+  /**
+   * Climax / super gauge — builds on HP damage dealt and taken; spend at max for a heavy melee strike.
+   */
+  climaxMeter: number;
+  /**
+   * Until this arena clock, UI highlights dash/skills as a **link** after a clean HP hit.
+   */
+  cancelWindowUntilMs: number;
+  /**
+   * Offensive chain depth for **damage scaling** — clean hits within the combo gap advance it;
+   * whiffs, blocks, or taking HP damage clear it.
+   */
+  comboChainDepth: number;
+  /** Arena clock until which the chain is still live for depth (`comboChainConfig` gap). */
+  comboChainExpireAtMs: number;
   /**
    * How this fighter lanes right now — immediate modifiers only (no gear).
    * Same three stances for everyone (PvP fair).
@@ -266,6 +292,8 @@ export interface ArenaState {
   winner: FighterRole | null;
   /** Monotonic ms used for cooldowns and log ordering */
   nowMs: number;
+  /** Monotonic counter for combat-log ids (deterministic; no Math.random). */
+  logSeq: number;
   /** Arena → Black Market resource bridge (persisted locally). */
   resources: ArenaResources;
   /** Set when a round ends; used for HUD until reset. */
@@ -325,6 +353,8 @@ export interface PlayerInput {
 export type ArenaReducerAction =
   | { type: "TICK"; dtMs: number; input: PlayerInput; opponentInput: PlayerInput }
   | { type: "BASIC_ATTACK" }
+  | { type: "USE_CLIMAX" }
+  | { type: "OPPONENT_USE_CLIMAX" }
   | { type: "DASH" }
   | { type: "USE_ABILITY"; slot: 0 | 1 }
   | { type: "SET_PLAYER_CLASS"; classId: ClassId }
@@ -342,4 +372,12 @@ export type ArenaReducerAction =
   | { type: "MOVE_LEFT"; dtMs?: number }
   | { type: "MOVE_RIGHT"; dtMs?: number }
   | { type: "SET_RESOURCE_FOCUS"; focus: ResourceFocusId | null }
-  | { type: "SET_COMBAT_STANCE"; fighterIdx: 0 | 1; stance: CombatStanceId };
+  | { type: "SET_COMBAT_STANCE"; fighterIdx: 0 | 1; stance: CombatStanceId }
+  | {
+      type: "NETPLAY_LOCKSTEP_FRAME";
+      tickMs: number;
+      p0: ArenaInputFrame;
+      p1: ArenaInputFrame;
+      prevP0: ArenaInputFrame;
+      prevP1: ArenaInputFrame;
+    };

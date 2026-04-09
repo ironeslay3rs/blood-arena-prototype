@@ -45,3 +45,7 @@ export function opponentKeyIsSkill1(code: string): boolean {
 export function opponentKeyIsSkill2(code: string): boolean {
   return code === "BracketRight" || code === "Numpad9";
 }
+
+export function opponentKeyIsClimax(code: string): boolean {
+  return code === "KeyM" || code === "NumpadMultiply";
+}

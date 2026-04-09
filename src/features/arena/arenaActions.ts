@@ -39,6 +39,7 @@ import {
   shouldRunDummyAi,
   shouldShiftDummyTowardPlayer,
 } from "./opponentPolicy";
+import { applyNetplayLockstepFrame } from "./arenaNetplayStep";
 import { levelFromWins } from "./fighterProgress";
 import {
   BRIBE_CREDITS_COST,
@@ -100,6 +101,43 @@ import {
   MATCH_INCREASED_DAMAGE_MULT,
   unstableResourceMultiplier,
 } from "./matchModifiers";
+import {
+  COMBO_CANCEL_LINK_MS,
+  COMBO_CHAIN_GAP_MS,
+  comboOutgoingDamageMultiplier,
+} from "./comboChainConfig";
+import {
+  CLIMAX_METER_MAX,
+  CLIMAX_METER_ABILITY_DAMAGE_WHIFF,
+  CLIMAX_METER_BASIC_ATTACK_WHIFF,
+  CLIMAX_METER_DEFENDER_ON_CHIP,
+  CLIMAX_METER_PER_DEALT_HP,
+  CLIMAX_METER_PER_TAKEN_HP,
+  CLIMAX_POST_ATTACK_COOLDOWN_MS,
+} from "./climaxMeterConfig";
+import {
+  resolveClimaxStrikeDamage,
+  resolveClimaxStrikeLogFragment,
+} from "./climaxStrikeProfile";
+
+export { CLIMAX_METER_MAX } from "./climaxMeterConfig";
+
+function grantClimaxMeter(
+  state: ArenaState,
+  fighterIdx: 0 | 1,
+  delta: number,
+): ArenaState {
+  if (state.winner != null || delta <= 0) return state;
+  const next = structuredClone(state) as ArenaState;
+  const f = next.fighters[fighterIdx];
+  f.climaxMeter = Math.min(CLIMAX_METER_MAX, f.climaxMeter + delta);
+  return next;
+}
+
+function resetOffensiveComboChain(fighter: FighterState): void {
+  fighter.comboChainDepth = 0;
+  fighter.comboChainExpireAtMs = 0;
+}
 
 const MAX_LOG = 48;
 const DEFAULT_MANUAL_MOVE_MS = 16;
@@ -243,7 +281,8 @@ function withLog(
     evolutionCue?: CombatLogEntry["evolutionCue"];
   },
 ): ArenaState {
-  const id = `${state.nowMs}-${Math.random().toString(36).slice(2, 9)}`;
+  const nextSeq = state.logSeq + 1;
+  const id = `${state.nowMs}-${nextSeq}`;
   const entry: CombatLogEntry = {
     id,
     atMs: state.nowMs,
@@ -253,6 +292,7 @@ function withLog(
   };
   return {
     ...state,
+    logSeq: nextSeq,
     log: [...state.log, entry].slice(-MAX_LOG),
   };
 }
@@ -318,6 +358,12 @@ function applyDamageTo(
   const next = structuredClone(state) as ArenaState;
   const attacker = next.fighters[attackerIdx];
   const target = next.fighters[targetIdx];
+  if (state.nowMs > attacker.comboChainExpireAtMs) {
+    attacker.comboChainDepth = 0;
+  }
+  if (!target.blocking) {
+    raw *= comboOutgoingDamageMultiplier(attacker.comboChainDepth);
+  }
   raw *= stanceOutgoingDamageMult(attacker.combatStance);
   if (raw <= 0) return state;
   const grossMit = mitigatedDamage(target, raw);
@@ -470,6 +516,34 @@ function applyDamageTo(
     grossMit,
     skipHighPersona,
   });
+
+  if (grossMit > 0 && target.blocking) {
+    resetOffensiveComboChain(attacker);
+  }
+
+  if (hpDamage > 0) {
+    resetOffensiveComboChain(target);
+    attacker.climaxMeter = Math.min(
+      CLIMAX_METER_MAX,
+      attacker.climaxMeter + CLIMAX_METER_PER_DEALT_HP,
+    );
+    target.climaxMeter = Math.min(
+      CLIMAX_METER_MAX,
+      target.climaxMeter + CLIMAX_METER_PER_TAKEN_HP,
+    );
+    if (target.blocking && CLIMAX_METER_DEFENDER_ON_CHIP > 0) {
+      target.climaxMeter = Math.min(
+        CLIMAX_METER_MAX,
+        target.climaxMeter + CLIMAX_METER_DEFENDER_ON_CHIP,
+      );
+    }
+    if (!target.blocking) {
+      attacker.cancelWindowUntilMs = state.nowMs + COMBO_CANCEL_LINK_MS;
+      attacker.comboChainDepth += 1;
+      attacker.comboChainExpireAtMs = state.nowMs + COMBO_CHAIN_GAP_MS;
+    }
+  }
+
   s = evaluateWinner(s);
   return s;
 }
@@ -524,17 +598,13 @@ function evaluateWinner(state: ArenaState): ArenaState {
       lastMatchResult: "loss",
       pendingHpPenalty: nextPenalty,
       winStreak: 0,
-      log: [
-        ...state.log,
-        {
-          id: `win-${state.nowMs}`,
-          atMs: state.nowMs,
-          message: shouldRunDummyAi(state.opponentController)
-            ? "Player 1 is down. Defeat."
-            : "Player 1 is down. Player 2 wins.",
-        },
-      ].slice(-MAX_LOG),
     };
+    s = withLog(
+      s,
+      shouldRunDummyAi(state.opponentController)
+        ? "Player 1 is down. Defeat."
+        : "Player 1 is down. Player 2 wins.",
+    );
     s = withLog(
       s,
       `Tempo falls to ${formatTempoForLog(s.combatTempo)}.`,
@@ -564,9 +634,9 @@ function evaluateWinner(state: ArenaState): ArenaState {
   }
   if (o.hp <= 0) {
     const nextStreak = state.winStreak + 1;
-    let { delta, logLines } = buildWinResourceRewards(state);
-    delta = scaleWinRewardDelta(
-      delta,
+    const { delta: rawDelta, logLines } = buildWinResourceRewards(state);
+    const delta = scaleWinRewardDelta(
+      rawDelta,
       winStreakRewardMultiplier(nextStreak),
     );
     const nextResources = addArenaResources(state.resources, delta);
@@ -579,17 +649,13 @@ function evaluateWinner(state: ArenaState): ArenaState {
       resources: nextResources,
       pendingHpPenalty: 0,
       winStreak: nextStreak,
-      log: [
-        ...state.log,
-        {
-          id: `win-${state.nowMs}`,
-          atMs: state.nowMs,
-          message: shouldRunDummyAi(state.opponentController)
-            ? "Training opponent down. Player 1 wins."
-            : "Player 2 is down. Player 1 wins.",
-        },
-      ].slice(-MAX_LOG),
     };
+    s = withLog(
+      s,
+      shouldRunDummyAi(state.opponentController)
+        ? "Training opponent down. Player 1 wins."
+        : "Player 2 is down. Player 1 wins.",
+    );
     s = withLog(
       s,
       `Tempo rises to ${formatTempoForLog(s.combatTempo)}.`,
@@ -786,7 +852,12 @@ function basicAttackFrom(state: ArenaState, attackerIdx: 0 | 1): ArenaState {
   if (attacker.cooldowns.attack > 0) return state;
 
   if (!isWithinRange(attacker, target, def.attackRange)) {
-    return withLog(state, `${attacker.label} attacked — out of range.`);
+    let s = state;
+    if (CLIMAX_METER_BASIC_ATTACK_WHIFF > 0) {
+      s = grantClimaxMeter(s, attackerIdx, CLIMAX_METER_BASIC_ATTACK_WHIFF);
+      resetOffensiveComboChain(s.fighters[attackerIdx]);
+    }
+    return withLog(s, `${attacker.label} attacked — out of range.`);
   }
 
   const next = structuredClone(state) as ArenaState;
@@ -803,6 +874,47 @@ function basicAttackFrom(state: ArenaState, attackerIdx: 0 | 1): ArenaState {
 
 function basicAttack(state: ArenaState): ArenaState {
   return basicAttackFrom(state, 0);
+}
+
+function fighterClimaxAttack(
+  state: ArenaState,
+  attackerIdx: 0 | 1,
+): ArenaState {
+  if (state.winner != null) return state;
+  const targetIdx = (attackerIdx === 0 ? 1 : 0) as 0 | 1;
+  const attacker = state.fighters[attackerIdx];
+  const target = state.fighters[targetIdx];
+  const def = fighterDef(attacker);
+  if (attacker.hp <= 0) return state;
+  if (attacker.climaxMeter < CLIMAX_METER_MAX) return state;
+
+  if (!isWithinRange(attacker, target, def.attackRange)) {
+    return withLog(state, `${attacker.label} — Climax out of range.`);
+  }
+
+  const next = structuredClone(state) as ArenaState;
+  const p = next.fighters[attackerIdx];
+  resetOffensiveComboChain(p);
+  p.cooldowns.attack = Math.max(
+    p.cooldowns.attack,
+    CLIMAX_POST_ATTACK_COOLDOWN_MS,
+  );
+  p.climaxMeter = 0;
+
+  const fd = p.fighterDefinition;
+  const climaxName = resolveClimaxStrikeLogFragment(
+    fd.faction,
+    fd.climaxOverride,
+  );
+  let s = withLog(next, `${p.label} unleashes ${climaxName}!`);
+  const strike = resolveClimaxStrikeDamage(
+    fd.faction,
+    fd.climaxOverride,
+    def.attackDamage,
+    bioFuryDamageBonus(p, state.nowMs),
+  );
+  s = applyDamageTo(s, attackerIdx, targetIdx, strike, "hit");
+  return s;
 }
 
 /**
@@ -946,12 +1058,30 @@ function performFighterAbility(
   }
 
   const kit = fighterDef(actor);
+  const actorIdxSafe = actorIdx;
   if (ability.effectType === "damage") {
     if (!isWithinRange(actor, opponent, kit.attackRange)) {
-      return withLog(
-        state,
-        `${actor.label} tried ${ability.name} — out of range.`,
+      const next = structuredClone(state) as ArenaState;
+      const p = next.fighters[actorIdxSafe];
+      p.resource = clampResource(
+        p.resource - ABILITY_RESOURCE_COST,
+        p.resourceMax,
       );
+      p.cooldowns[cdKey] = ability.cooldown;
+      resetOffensiveComboChain(p);
+      let s = withLog(
+        next,
+        `${p.label} used ${ability.name} (whiff — out of range).`,
+      );
+      if (CLIMAX_METER_ABILITY_DAMAGE_WHIFF > 0) {
+        s = grantClimaxMeter(
+          s,
+          actorIdxSafe,
+          CLIMAX_METER_ABILITY_DAMAGE_WHIFF,
+        );
+      }
+      s = applyFactionAbilityFollowup(s, actorIdxSafe);
+      return evaluateWinner(s);
     }
   }
 
@@ -1056,7 +1186,6 @@ function shiftOpponentTowardPlayer(
   if (state.winner != null) return state;
   if (!shouldShiftDummyTowardPlayer(state.opponentController)) return state;
   const opp = state.fighters[1];
-  const pl = state.fighters[0];
   if (!opp.isDummy || opp.hp <= 0) return state;
   const next = structuredClone(state) as ArenaState;
   const o = next.fighters[1];
@@ -1150,6 +1279,8 @@ function applyDummyCombatStep(state: ArenaState): ArenaState {
   switch (intent.kind) {
     case "none":
       return state;
+    case "climax":
+      return fighterClimaxAttack(state, 1);
     case "basic":
       return opponentBasicAttack(state);
     case "ability":
@@ -1162,6 +1293,16 @@ export function arenaReducer(
   action: ArenaReducerAction,
 ): ArenaState {
   switch (action.type) {
+    case "NETPLAY_LOCKSTEP_FRAME":
+      return applyNetplayLockstepFrame(
+        arenaReducer,
+        state,
+        action.tickMs,
+        action.p0,
+        action.p1,
+        action.prevP0,
+        action.prevP1,
+      );
     case "RESET_MATCH":
       return rematchKeepingRoster(state);
     case "SET_PLAYER_CLASS":
@@ -1221,6 +1362,10 @@ export function arenaReducer(
       return setResourceFocus(state, action.focus);
     case "BASIC_ATTACK":
       return basicAttack(state);
+    case "USE_CLIMAX":
+      return fighterClimaxAttack(state, 0);
+    case "OPPONENT_USE_CLIMAX":
+      return fighterClimaxAttack(state, 1);
     case "DASH":
       return dash(state);
     case "USE_ABILITY":

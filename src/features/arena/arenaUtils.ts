@@ -58,6 +58,13 @@ export function clampHp(hp: number, hpMax: number): number {
   return clamp(hp, 0, hpMax);
 }
 
+/** Display-only chip for HUD (−3…+3, same clamp as tempo panel). */
+export function formatCombatTempoForChip(tempo: number): string {
+  const t = Math.min(3, Math.max(-3, Math.round(tempo)));
+  if (t === 0) return "Tempo 0";
+  return `Tempo ${t > 0 ? "+" : ""}${t}`;
+}
+
 export function arenaDistance(a: FighterState, b: FighterState): number {
   return Math.abs(a.x - b.x);
 }
@@ -167,6 +174,10 @@ export function makeFighterFromDefinition(
     pureSoulLogSilenceUntilMs: 0,
     nearDeathFlavorLogged: false,
     openingStrikeConsumed: false,
+    climaxMeter: 0,
+    cancelWindowUntilMs: 0,
+    comboChainDepth: 0,
+    comboChainExpireAtMs: 0,
     combatStance: opts.combatStance ?? DEFAULT_COMBAT_STANCE,
   };
 }

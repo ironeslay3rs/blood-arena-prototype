@@ -1,4 +1,6 @@
 import type { ArenaState, Faction } from "./arenaTypes";
+import { arenaDeterministic01 } from "./arenaResources";
+import { CLIMAX_METER_MAX } from "./climaxMeterConfig";
 import {
   ABILITY_RESOURCE_COST,
   arenaDistance,
@@ -9,6 +11,7 @@ import {
 
 export type DummyCombatIntent =
   | { kind: "none" }
+  | { kind: "climax" }
   | { kind: "basic" }
   | { kind: "ability"; slot: 0 | 1 };
 
@@ -74,6 +77,7 @@ function isOffensiveIntent(
   intent: DummyCombatIntent,
   state: ArenaState,
 ): boolean {
+  if (intent.kind === "climax") return true;
   if (intent.kind === "basic") return true;
   if (intent.kind === "ability") {
     const ab = state.fighters[1].fighterDefinition.abilities[intent.slot];
@@ -92,6 +96,13 @@ function buildOrderedOptions(state: ArenaState): DummyCombatIntent[] {
   const def = fighterDef(opp);
   const out: DummyCombatIntent[] = [];
 
+  if (
+    opp.climaxMeter >= CLIMAX_METER_MAX &&
+    opp.cooldowns.attack <= 0 &&
+    isWithinRange(opp, pl, def.attackRange)
+  ) {
+    out.push({ kind: "climax" });
+  }
   if (opp.cooldowns.attack <= 0 && isWithinRange(opp, pl, def.attackRange)) {
     out.push({ kind: "basic" });
   }
@@ -107,16 +118,16 @@ function buildOrderedOptions(state: ArenaState): DummyCombatIntent[] {
 /**
  * Training dummy AI with controlled imperfection:
  *
- * 1) Decision noise — after ranking options, we sometimes take the second-best
- *    instead of the greedy pick:
- *    - Default lanes: uniform random in [10%, 15%] per tick (slight humanization).
- *    - Chaos (Black City): fixed 30% — more volatile, matches “chaos” fantasy.
+ * 1) Decision noise — second-best pick uses {@link arenaDeterministic01} (same
+ *    state + tick always → same choice; rollback-safe).
+ *    - Default lanes: threshold in [10%, 15%].
+ *    - Chaos (Black City): fixed 30%.
  *
- * 2) Sustain (Pure) — if current HP fraction &lt; 40% (“survival” low), 50% chance
+ * 2) Sustain (Pure) — if current HP fraction &lt; 40% (“survival” low), 50% (det.)
  *    to skip offensive actions entirely (holds back when dying).
  *
  * 3) Aggression (Bio) — same low-HP band, but ignores that panic rule 70% of the
- *    time; the remaining 30% of ticks still roll the 50% cancel, so ~15% net bail.
+ *    time; the remaining 30% × 50% det. branch is the “bail” mix.
  *
  * Control / chaos lanes do not add the sustain cancel (they keep pressing or use
  * noise only); chaos still gets the stronger second-best rate above.
@@ -124,7 +135,6 @@ function buildOrderedOptions(state: ArenaState): DummyCombatIntent[] {
 export function decideDummyCombatIntent(state: ArenaState): DummyCombatIntent {
   if (state.winner != null) return { kind: "none" };
   const opp = state.fighters[1];
-  const pl = state.fighters[0];
   if (!opp.isDummy || opp.hp <= 0) return { kind: "none" };
 
   const options = buildOrderedOptions(state);
@@ -135,10 +145,9 @@ export function decideDummyCombatIntent(state: ArenaState): DummyCombatIntent {
   let chosen = options[0]!;
 
   if (options.length >= 2) {
-    // Second-best noise: chaos = 0.30; otherwise roll once in [0.10, 0.15].
     const secondBestChance =
-      lane === "chaos" ? 0.3 : 0.1 + Math.random() * 0.05;
-    if (Math.random() < secondBestChance) {
+      lane === "chaos" ? 0.3 : 0.1 + arenaDeterministic01(state, 0xda11) * 0.05;
+    if (arenaDeterministic01(state, 0xda22) < secondBestChance) {
       chosen = options[1]!;
     }
   }
@@ -148,14 +157,14 @@ export function decideDummyCombatIntent(state: ArenaState): DummyCombatIntent {
 
   if (lowSurvival && isOffensiveIntent(chosen, state)) {
     if (lane === "sustain") {
-      // Weight 0.5: half the time refuse to commit an attack when badly wounded.
-      if (Math.random() < 0.5) {
+      if (arenaDeterministic01(state, 0xda33) < 0.5) {
         return { kind: "none" };
       }
     } else if (lane === "aggression") {
-      // Weight 0.7: usually ignore low-HP caution (stay aggressive).
-      // Weight 0.3 × 0.5: when caution applies, half the time still cancel.
-      if (Math.random() < 0.3 && Math.random() < 0.5) {
+      if (
+        arenaDeterministic01(state, 0xda44) < 0.3 &&
+        arenaDeterministic01(state, 0xda55) < 0.5
+      ) {
         return { kind: "none" };
       }
     }

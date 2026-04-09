@@ -154,3 +154,157 @@ body {
   );
   mix-blend-mode: overlay;
 }
+
+/* Round-start toast (Blood Arena) */
+@keyframes round-start-toast-kf {
+  from {
+    opacity: 0;
+    transform: translateY(-6px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.round-start-toast {
+  animation: round-start-toast-kf 0.22s ease-out forwards;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .round-start-toast {
+    animation: none;
+    opacity: 1;
+  }
+}
+
+/* KO beat — Phase 1 spectacle (duration from inline style, defaults below) */
+@keyframes ko-beat-pulse-kf {
+  0% {
+    filter: brightness(1);
+    box-shadow: inset 0 0 0 0 rgb(244 63 94 / 0);
+  }
+  40% {
+    filter: brightness(1.08);
+    box-shadow: inset 0 0 28px 2px rgb(244 63 94 / 0.18);
+  }
+  100% {
+    filter: brightness(1);
+    box-shadow: inset 0 0 0 0 rgb(244 63 94 / 0);
+  }
+}
+
+.ko-beat-pulse {
+  animation-name: ko-beat-pulse-kf;
+  animation-timing-function: ease-out;
+  animation-fill-mode: both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ko-beat-pulse {
+    animation: none;
+  }
+
+  /* KO zoom uses transform on #arena-combat — disable with reduced motion */
+  #arena-combat {
+    transform: none !important;
+    transition: none !important;
+  }
+}
+
+/* Hitstop — brief impact hold on fight strip (timeline + subtle flash) */
+@keyframes hitstop-hold-kf {
+  0% {
+    filter: brightness(1);
+  }
+  35% {
+    filter: brightness(1.06);
+  }
+  100% {
+    filter: brightness(1);
+  }
+}
+
+.hitstop-hold {
+  animation: hitstop-hold-kf var(--hitstop-hold-ms, 72ms) ease-out both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hitstop-hold {
+    animation: none;
+  }
+}
+
+/* Heavy hit — transform + micro chroma (intensity/duration from inline CSS vars) */
+@keyframes arena-screen-shake-kf {
+  0%,
+  100% {
+    transform: translate(0, 0);
+    filter: hue-rotate(0deg);
+  }
+  18% {
+    transform: translate(
+      calc(var(--shake-intensity, 0) * -6px),
+      calc(var(--shake-intensity, 0) * 2px)
+    );
+    filter: hue-rotate(calc(var(--chroma-deg, 0) * 1deg));
+  }
+  40% {
+    transform: translate(
+      calc(var(--shake-intensity, 0) * 5px),
+      calc(var(--shake-intensity, 0) * -3px)
+    );
+    filter: hue-rotate(calc(var(--chroma-deg, 0) * -0.6deg));
+  }
+  62% {
+    transform: translate(
+      calc(var(--shake-intensity, 0) * -3px),
+      calc(var(--shake-intensity, 0) * 1px)
+    );
+    filter: hue-rotate(0deg);
+  }
+}
+
+.arena-screen-shake {
+  animation: arena-screen-shake-kf var(--shake-ms, 220ms) ease-out both;
+  will-change: transform;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .arena-screen-shake {
+    animation: none;
+    transform: none;
+    filter: none;
+  }
+}
+
+@keyframes announcer-stinger-in-kf {
+  from {
+    opacity: 0;
+    transform: translateY(6px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.combo-chain-pill {
+  animation: announcer-stinger-in-kf 0.18s ease-out both;
+}
+
+.announcer-stinger-toast {
+  animation: announcer-stinger-in-kf 0.2s ease-out both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .combo-chain-pill {
+    animation: none;
+    opacity: 1;
+  }
+
+  .announcer-stinger-toast {
+    animation: none;
+    opacity: 1;
+  }
+}

@@ -45,6 +45,20 @@ export function matchModifierShiftLogLine(id: MatchModifierId): string {
   return `The arena shifts: ${matchModifierLogPhrase(id)}`;
 }
 
+/** Short label for HUD chips (same rules as log line). */
+export function matchModifierShortLabel(id: MatchModifierId): string {
+  switch (id) {
+    case "faster_cooldowns":
+      return "Fast cooldowns";
+    case "reduced_hp":
+      return "Reduced HP";
+    case "increased_damage":
+      return "Heavy hits";
+    case "unstable_resource":
+      return "Unstable resource";
+  }
+}
+
 /** Deterministic wobble for unstable resource (same for both fighters at a given nowMs). */
 export function unstableResourceMultiplier(nowMs: number): number {
   const phase = Math.floor(nowMs / MATCH_UNSTABLE_RESOURCE_PERIOD_MS) & 1;

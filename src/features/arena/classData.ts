@@ -1,9 +1,4 @@
-import type {
-  AbilityDefinition,
-  ClassId,
-  FighterDefinition,
-  FighterId,
-} from "./arenaTypes";
+import type { ClassId, FighterDefinition, FighterId } from "./arenaTypes";
 
 export interface SkillDefinition {
   id: string;
@@ -95,6 +90,11 @@ export const FIGHTER_DEFINITIONS: Record<FighterId, FighterDefinition> = {
     ],
     passive:
       "Bio predator: light frame, fast legs, and bite damage that spikes in short windows—trade HP for tempo and burst.",
+    climaxOverride: {
+      damageMult: 2.42,
+      flatBonus: 4,
+      logName: "Rending Climax",
+    },
   },
   "blood-surge": {
     id: "blood-surge",
@@ -123,6 +123,11 @@ export const FIGHTER_DEFINITIONS: Record<FighterId, FighterDefinition> = {
     ],
     passive:
       "Bio berserker: lower life pool, cruel cleave damage, and surge mobility—reward all-in trades over long guards.",
+    climaxOverride: {
+      damageMult: 2.38,
+      flatBonus: 5,
+      logName: "Carnage Climax",
+    },
   },
   "bone-plating": {
     id: "bone-plating",
@@ -151,6 +156,11 @@ export const FIGHTER_DEFINITIONS: Record<FighterId, FighterDefinition> = {
     ],
     passive:
       "Bio bruiser (still lighter than other factions’ tanks): plating trades total HP for faster footspeed and a punishing rib shot cadence.",
+    climaxOverride: {
+      damageMult: 2.12,
+      flatBonus: 11,
+      logName: "Bulwark Climax",
+    },
   },
   "vault-disciple": {
     id: "vault-disciple",
@@ -179,6 +189,11 @@ export const FIGHTER_DEFINITIONS: Record<FighterId, FighterDefinition> = {
     ],
     passive:
       "Pure bulwark: deep health pool, softer baseline damage, and aegis uptime—let block and shields carry the lane.",
+    climaxOverride: {
+      damageMult: 1.98,
+      flatBonus: 11,
+      logName: "Sigil Climax",
+    },
   },
   "radiant-ward": {
     id: "radiant-ward",
@@ -207,6 +222,11 @@ export const FIGHTER_DEFINITIONS: Record<FighterId, FighterDefinition> = {
     ],
     passive:
       "Pure healer: massive HP budget and the shortest heal cadence in the roster—more healing touches per minute at the cost of kill pressure.",
+    climaxOverride: {
+      damageMult: 2.02,
+      flatBonus: 12,
+      logName: "Lightwell Climax",
+    },
   },
   "ember-seal": {
     id: "ember-seal",
@@ -235,6 +255,11 @@ export const FIGHTER_DEFINITIONS: Record<FighterId, FighterDefinition> = {
     ],
     passive:
       "Pure duelist: sturdy body, measured damage, and seal/buff rhythm tuned for long defensive wins.",
+    climaxOverride: {
+      damageMult: 2.06,
+      flatBonus: 10,
+      logName: "Sealfire Climax",
+    },
   },
   "ironheart-cadet": {
     id: "ironheart-cadet",
@@ -263,6 +288,11 @@ export const FIGHTER_DEFINITIONS: Record<FighterId, FighterDefinition> = {
     ],
     passive:
       "Mecha cadence: mid-weight frame with heat abilities cycling quickly—drill burst and dash on shorter clocks than other factions.",
+    climaxOverride: {
+      damageMult: 2.14,
+      flatBonus: 7,
+      logName: "Linebreaker Climax",
+    },
   },
   "precision-burst": {
     id: "precision-burst",
@@ -291,6 +321,11 @@ export const FIGHTER_DEFINITIONS: Record<FighterId, FighterDefinition> = {
     ],
     passive:
       "Mecha line rifle: mid HP, excellent cooldown efficiency on poke and commit shots.",
+    climaxOverride: {
+      damageMult: 2.2,
+      flatBonus: 6,
+      logName: "Sightline Climax",
+    },
   },
   "servo-harness": {
     id: "servo-harness",
@@ -320,6 +355,11 @@ export const FIGHTER_DEFINITIONS: Record<FighterId, FighterDefinition> = {
     ],
     passive:
       "Mecha bruiser: leans on frequent shield vents (same shield potency as global rules) plus hydraulic finishers.",
+    climaxOverride: {
+      damageMult: 2.1,
+      flatBonus: 8,
+      logName: "Hydraulic Climax",
+    },
   },
   "scrap-hound": {
     id: "scrap-hound",
@@ -349,6 +389,11 @@ export const FIGHTER_DEFINITIONS: Record<FighterId, FighterDefinition> = {
     ],
     passive:
       "Black City scavenger: low HP and high damage—reward aggression; one bad trade hurts more than on other factions.",
+    climaxOverride: {
+      damageMult: 2.36,
+      flatBonus: 4,
+      logName: "Salvage Climax",
+    },
   },
   "runic-decoder": {
     id: "runic-decoder",
@@ -378,6 +423,11 @@ export const FIGHTER_DEFINITIONS: Record<FighterId, FighterDefinition> = {
     ],
     passive:
       "Black City control: glassy HP with above-average attack and fast decode windows—higher ceiling, harsh mistakes.",
+    climaxOverride: {
+      damageMult: 2.3,
+      flatBonus: 6,
+      logName: "Decode Climax",
+    },
   },
   "hex-splicer": {
     id: "hex-splicer",
@@ -408,6 +458,11 @@ export const FIGHTER_DEFINITIONS: Record<FighterId, FighterDefinition> = {
     ],
     passive:
       "Black City splicer: unstable buff→burst loop on aggressive cooldowns; statline trades bulk for explosive turns.",
+    climaxOverride: {
+      damageMult: 2.45,
+      flatBonus: 3,
+      logName: "Splicer Climax",
+    },
   },
 };
 

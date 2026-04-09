@@ -5,16 +5,16 @@ import {
 import type { ArenaState, FighterProfile } from "./arenaTypes";
 import { FIGHTER_DEFINITIONS } from "./classData";
 
-function newProfileInstanceId(): string {
-  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
-    return crypto.randomUUID();
-  }
-  return `fp-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
+/**
+ * Stable document id per canon (offline BMRT). Survives refresh; no RNG — see `simDeterminism.ts`.
+ */
+export function fighterProfileDocumentId(canon: CanonCharacterId): string {
+  return `fp-bmrt-${canon}`;
 }
 
 export function createEmptyFighterProfile(canon: CanonCharacterId): FighterProfile {
   return {
-    id: newProfileInstanceId(),
+    id: fighterProfileDocumentId(canon),
     canonCharacterId: canon,
     wins: 0,
     losses: 0,

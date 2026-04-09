@@ -31,7 +31,16 @@ export const STANCE_UI: Record<
   CombatStanceId,
   { label: string; shortHint: string }
 > = {
-  aggressive: { label: "Aggressive", shortHint: "+4% damage" },
-  defensive: { label: "Defensive", shortHint: "−4% HP taken" },
-  control: { label: "Control", shortHint: "+10% resource regen" },
+  aggressive: {
+    label: "Aggressive",
+    shortHint: "Favor damage in trades (+4% out)",
+  },
+  defensive: {
+    label: "Defensive",
+    shortHint: "Soak hits better (−4% HP loss)",
+  },
+  control: {
+    label: "Control",
+    shortHint: "More meter over time (+10% regen)",
+  },
 };

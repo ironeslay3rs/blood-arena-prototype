@@ -189,6 +189,25 @@ export type LossSalvageResult = {
  * Deterministic “small chance” from match timing + fighter id (no RNG API).
  * ~30% to gain scrap OR parts.
  */
+/**
+ * Unit interval [0, 1) derived from arena snapshot + salt — same state always yields the same value
+ * (training dummy “noise”, future lockstep checks).
+ */
+export function arenaDeterministic01(state: ArenaState, salt: number): number {
+  const [p0, p1] = state.fighters;
+  let h = state.nowMs | 0;
+  h = Math.imul(h ^ state.matchOrdinal, 0x9e3779b1);
+  h ^= Math.round(p0.x * 1000) | 0;
+  h = Math.imul(h ^ (Math.round(p1.x * 1000) | 0), 0x85ebca6b);
+  h ^= (p0.hp | 0) ^ ((p1.hp | 0) << 1);
+  h ^= Math.imul(salt, 0x27d4eb2d);
+  h >>>= 0;
+  h ^= h >>> 16;
+  h = Math.imul(h, 0x7feb352d);
+  h ^= h >>> 15;
+  return (h >>> 0) / 0x1_0000_0000;
+}
+
 export function rollLossSalvage(state: ArenaState): LossSalvageResult {
   const h = hashArenaMoment(state);
   const roll = h % 100;

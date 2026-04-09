@@ -4,7 +4,23 @@ import type {
   CombatLogEntry,
   FighterState,
 } from "@/features/arena/arenaTypes";
-import { useEffect, useRef, useState } from "react";
+import {
+  COMBAT_JUICE,
+  HITSTOP_HEAVY_DAMAGE_MIN,
+  resolveHitstopMs,
+} from "@/features/arena/combatJuiceConfig";
+import {
+  isBlockedDamageMessage,
+  parseDamageLine,
+} from "@/features/arena/combatLogParse";
+import {
+  startTransition,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
 
 export type CardCombatFeedback = {
   targetedGlow: boolean;
@@ -20,8 +36,14 @@ export type CardCombatFeedback = {
 };
 
 export type ArenaCombatFeedback = {
-  /** Brief pulse on fighter 1 (opponent) sprite when they attack */
+  /** Brief pulse on opponent sprite during their attack wind-up (AI / P2). */
   pulseOpponent: boolean;
+  /** Brief pulse on Player 1 sprite when their hit connects — mirrors arena read for both sides. */
+  pulsePlayer: boolean;
+  /** Impact freeze strip — pairs timeline stretch with `#arena-combat` `.hitstop-hold`. */
+  hitstopHold: boolean;
+  /** Tempo-scaled ms for heavy shake on `#arena-combat` — 0 = off. */
+  screenShakeDurationMs: number;
 };
 
 const PHASE_TARGET_MS = 0;
@@ -29,6 +51,18 @@ const PHASE_TRAIT_MS = 200;
 const PHASE_ATTACK_MS = 420;
 const PHASE_DAMAGE_MS = 650;
 const PHASE_CLEAR_MS = 1450;
+
+function subscribePrefersReducedMotion(onStoreChange: () => void) {
+  if (typeof window === "undefined") return () => {};
+  const mq = window.matchMedia("(prefers-reduced-motion: reduce)");
+  mq.addEventListener("change", onStoreChange);
+  return () => mq.removeEventListener("change", onStoreChange);
+}
+
+function getPrefersReducedMotion(): boolean {
+  if (typeof window === "undefined") return false;
+  return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+}
 
 const emptyCard: CardCombatFeedback = {
   targetedGlow: false,
@@ -63,50 +97,6 @@ function traitTagForAbility(
   }
 }
 
-function parseDamageLine(
-  msg: string,
-  youLabel: string,
-  oppLabel: string,
-): { attacker: string; target: string; amount: number } | null {
-  const dm = msg.match(/ for (\d+) HP/);
-  if (!dm) return null;
-  const amount = parseInt(dm[1]!, 10);
-  if (!Number.isFinite(amount)) return null;
-  const pre = msg.split(" for ")[0] ?? "";
-
-  const hitSep = " hit ";
-  const hi = pre.indexOf(hitSep);
-  if (hi !== -1) {
-    return {
-      attacker: pre.slice(0, hi),
-      target: pre.slice(hi + hitSep.length),
-      amount,
-    };
-  }
-
-  const sw = " struck with ";
-  const wi = pre.indexOf(sw);
-  if (wi !== -1) {
-    const rest = pre.slice(wi + sw.length);
-    if (rest.endsWith(youLabel)) {
-      return {
-        attacker: pre.slice(0, wi),
-        target: youLabel,
-        amount,
-      };
-    }
-    if (rest.endsWith(oppLabel)) {
-      return {
-        attacker: pre.slice(0, wi),
-        target: oppLabel,
-        amount,
-      };
-    }
-  }
-
-  return null;
-}
-
 export function useCombatFeedback(
   log: CombatLogEntry[],
   fighters: [FighterState, FighterState],
@@ -117,15 +107,27 @@ export function useCombatFeedback(
   const [opponentCard, setOpponentCard] = useState<CardCombatFeedback>(emptyCard);
   const [arena, setArena] = useState<ArenaCombatFeedback>({
     pulseOpponent: false,
+    pulsePlayer: false,
+    hitstopHold: false,
+    screenShakeDurationMs: 0,
   });
+
+  const prefersReducedMotion = useSyncExternalStore(
+    subscribePrefersReducedMotion,
+    getPrefersReducedMotion,
+    () => false,
+  );
 
   const cursorRef = useRef(0);
   const didInitCursorRef = useRef(false);
   const fightersRef = useRef(fighters);
-  fightersRef.current = fighters;
   const tempoAnimSpeedRef = useRef(tempoAnimSpeed);
-  tempoAnimSpeedRef.current = tempoAnimSpeed;
   const timeoutIdsRef = useRef<ReturnType<typeof setTimeout>[]>([]);
+
+  useLayoutEffect(() => {
+    fightersRef.current = fighters;
+    tempoAnimSpeedRef.current = tempoAnimSpeed;
+  });
   const seqRef = useRef(0);
 
   const clearAllTimeouts = () => {
@@ -146,9 +148,16 @@ export function useCombatFeedback(
       cursorRef.current = 0;
       didInitCursorRef.current = false;
       clearAllTimeouts();
-      setPlayerCard(emptyCard);
-      setOpponentCard(emptyCard);
-      setArena({ pulseOpponent: false });
+      startTransition(() => {
+        setPlayerCard(emptyCard);
+        setOpponentCard(emptyCard);
+        setArena({
+          pulseOpponent: false,
+          pulsePlayer: false,
+          hitstopHold: false,
+          screenShakeDurationMs: 0,
+        });
+      });
     }
 
     if (!didInitCursorRef.current) {
@@ -174,9 +183,19 @@ export function useCombatFeedback(
 
     let pendingTrait: string | null = null;
 
-    const runAiSequence = (damage: number, trait: string) => {
+    const runAiSequence = (
+      damage: number,
+      trait: string,
+      hitstopMs: number,
+      applyScreenShake: boolean,
+    ) => {
       const mySeq = ++seqRef.current;
       clearAllTimeouts();
+      const hs = hitstopMs > 0 ? beat(hitstopMs) : 0;
+      const shakeDur =
+        applyScreenShake && COMBAT_JUICE.screenShakeOnHeavy > 0
+          ? beat(COMBAT_JUICE.screenShakeHeavyMs)
+          : 0;
 
       schedule(() => {
         if (seqRef.current !== mySeq) return;
@@ -186,7 +205,12 @@ export function useCombatFeedback(
           showTargetedCaption: true,
         });
         setOpponentCard({ ...emptyCard });
-        setArena({ pulseOpponent: false });
+        setArena({
+          pulseOpponent: false,
+          pulsePlayer: false,
+          hitstopHold: false,
+          screenShakeDurationMs: 0,
+        });
       }, beat(PHASE_TARGET_MS));
 
       schedule(() => {
@@ -204,7 +228,12 @@ export function useCombatFeedback(
 
       schedule(() => {
         if (seqRef.current !== mySeq) return;
-        setArena({ pulseOpponent: true });
+        setArena({
+          pulseOpponent: true,
+          pulsePlayer: false,
+          hitstopHold: false,
+          screenShakeDurationMs: 0,
+        });
       }, beat(PHASE_ATTACK_MS));
 
       schedule(() => {
@@ -215,20 +244,63 @@ export function useCombatFeedback(
           targetedGlow: true,
         }));
         setOpponentCard((o) => ({ ...o, traitLabel: trait }));
-        setArena({ pulseOpponent: false });
+        setArena({
+          pulseOpponent: false,
+          pulsePlayer: false,
+          hitstopHold: hs > 0,
+          screenShakeDurationMs: shakeDur,
+        });
       }, beat(PHASE_DAMAGE_MS));
+
+      if (hs > 0) {
+        schedule(() => {
+          if (seqRef.current !== mySeq) return;
+          setArena((a) => ({ ...a, hitstopHold: false }));
+        }, beat(PHASE_DAMAGE_MS) + hs);
+      }
+
+      if (shakeDur > 0) {
+        schedule(() => {
+          if (seqRef.current !== mySeq) return;
+          setArena((a) => ({ ...a, screenShakeDurationMs: 0 }));
+        }, beat(PHASE_DAMAGE_MS) + shakeDur);
+      }
 
       schedule(() => {
         if (seqRef.current !== mySeq) return;
         setPlayerCard(emptyCard);
         setOpponentCard(emptyCard);
-        setArena({ pulseOpponent: false });
-      }, beat(PHASE_CLEAR_MS));
+        setArena({
+          pulseOpponent: false,
+          pulsePlayer: false,
+          hitstopHold: false,
+          screenShakeDurationMs: 0,
+        });
+      }, beat(PHASE_CLEAR_MS) + hs);
     };
 
-    const runPlayerHit = (damage: number, firstHitEvolution?: boolean) => {
+    const runPlayerHit = (
+      damage: number,
+      firstHitEvolution: boolean | undefined,
+      hitstopMs: number,
+      applyScreenShake: boolean,
+    ) => {
       const mySeq = ++seqRef.current;
       clearAllTimeouts();
+      const hs = hitstopMs > 0 ? beat(hitstopMs) : 0;
+      const shakeDur =
+        applyScreenShake && COMBAT_JUICE.screenShakeOnHeavy > 0
+          ? beat(COMBAT_JUICE.screenShakeHeavyMs)
+          : 0;
+      schedule(() => {
+        if (seqRef.current !== mySeq) return;
+        setArena({
+          pulseOpponent: false,
+          pulsePlayer: true,
+          hitstopHold: false,
+          screenShakeDurationMs: 0,
+        });
+      }, beat(32));
       schedule(() => {
         if (seqRef.current !== mySeq) return;
         setOpponentCard({
@@ -237,18 +309,35 @@ export function useCombatFeedback(
           evolutionFirstHitFlash: firstHitEvolution ?? false,
         });
         setPlayerCard(emptyCard);
-        setArena({ pulseOpponent: false });
+        setArena({
+          pulseOpponent: false,
+          pulsePlayer: false,
+          hitstopHold: hs > 0,
+          screenShakeDurationMs: shakeDur,
+        });
       }, beat(120));
+      if (hs > 0) {
+        schedule(() => {
+          if (seqRef.current !== mySeq) return;
+          setArena((a) => ({ ...a, hitstopHold: false }));
+        }, beat(120) + hs);
+      }
+      if (shakeDur > 0) {
+        schedule(() => {
+          if (seqRef.current !== mySeq) return;
+          setArena((a) => ({ ...a, screenShakeDurationMs: 0 }));
+        }, beat(120) + shakeDur);
+      }
       if (firstHitEvolution) {
         schedule(() => {
           if (seqRef.current !== mySeq) return;
           setOpponentCard((o) => ({ ...o, evolutionFirstHitFlash: false }));
-        }, beat(480));
+        }, beat(480) + hs);
       }
       schedule(() => {
         if (seqRef.current !== mySeq) return;
         setOpponentCard(emptyCard);
-      }, beat(1000));
+      }, beat(1000) + hs);
     };
 
     /** Does not bump seq — avoids cancelling scheduled damage feedback in the same log batch. */
@@ -316,8 +405,27 @@ export function useCombatFeedback(
       const dmg = parseDamageLine(msg, youLabel, oppLabel);
       if (!dmg) return;
 
+      const prevMsg = i > 0 ? (newEntries[i - 1]?.message ?? "") : "";
+      const climaxFollows = /unleashes .*Climax/i.test(prevMsg);
+
+      const rawHitstop =
+        resolveHitstopMs(dmg.amount, isBlockedDamageMessage(msg)) +
+        (climaxFollows && COMBAT_JUICE.superFreezeMs > 0
+          ? COMBAT_JUICE.superFreezeMs
+          : 0);
+      const hitstopMs = prefersReducedMotion ? 0 : rawHitstop;
+      const applyScreenShake =
+        !prefersReducedMotion &&
+        COMBAT_JUICE.screenShakeOnHeavy > 0 &&
+        (dmg.amount >= HITSTOP_HEAVY_DAMAGE_MIN || climaxFollows);
+
       if (dmg.attacker === oppLabel && dmg.target === youLabel) {
-        runAiSequence(dmg.amount, pendingTrait ?? "AGGRESSION");
+        runAiSequence(
+          dmg.amount,
+          pendingTrait ?? "AGGRESSION",
+          hitstopMs,
+          applyScreenShake,
+        );
         pendingTrait = null;
         return;
       }
@@ -326,7 +434,12 @@ export function useCombatFeedback(
         const nextE = newEntries[i + 1];
         const firstHitEvolution =
           nextE?.evolutionCue === "first_hit_impact" ? true : false;
-        runPlayerHit(dmg.amount, firstHitEvolution);
+        runPlayerHit(
+          dmg.amount,
+          firstHitEvolution,
+          hitstopMs,
+          applyScreenShake,
+        );
         pendingTrait = null;
         return;
       }
@@ -351,7 +464,7 @@ export function useCombatFeedback(
     return () => {
       clearAllTimeouts();
     };
-  }, [log]);
+  }, [log, prefersReducedMotion]);
 
   return { playerCard, opponentCard, arena };
 }
