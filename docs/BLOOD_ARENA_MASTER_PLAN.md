@@ -2,10 +2,12 @@
 
 **Purpose:** single north-star document for design + engineering: what “done” looks like, how work is sequenced, and where it lives in code.  
 **Companion:** [`FIGHTING_GAME_ROADMAP.md`](./FIGHTING_GAME_ROADMAP.md) (tactical shipped list), [`futureUpgrades.ts`](../src/features/arena/futureUpgrades.ts) (in-app catalog).  
-**Professional design contract (promises, pillar order, T1–T4 rubric, anti-goals):** **§15**.
+**Onboarding:** repo root [`README.md`](../README.md) (scripts, optional netplay env, links here).  
+**Professional design contract (promises, pillar order, T1–T6 rubric, anti-goals):** **§15**.
 
 ### Upgrade sequence (executive)
 
+0. **Persistent self-upgrade (core hook)** — players **keep upgrading** across sessions: **wins → level → small stat bonuses** (`fighterProgress`, `levelStatBonuses`), **resources → between-round spend** (`arenaSpend`, `MatchHud` meta), **reputation / identity** (`fighterReputation`, `fighterIdentity`). Fair PvP: power is **legible in UI + log**, not opaque loot RNG.  
 1. **Baseline + parity** — core sim, juice, climax meter, P2/dummy (M0–M1).  
 2. **Readable expression** — combo readout, link windows, scaling, meter economy, cancel **data** on UI (M2–M3, BP-04–07, 10–11).  
 3. **Roster-complete fantasy** — every `FighterId` has card `climaxOverride` + link-route hints where needed (`BP-12`, `classData`, `cancelRouteConfig`).  
@@ -20,6 +22,10 @@
 - **Readability before spectacle:** range, stance, tempo, and round rules remain obvious; juice is capped and tunable in [`combatJuiceConfig.ts`](../src/features/arena/combatJuiceConfig.ts).
 - **Reference bar:** SF/KOF-style **weight** and **climax beats**, adapted to a browser prototype (no fake depth).
 
+**Core selling idea — you keep upgrading yourself:** the fantasy is **return + growth**, not a single match. Every run feeds **persistent progression** (career wins/level, resources, between-bout choices) so the title *Arena* reads as **ongoing improvement** — skill *and* loadout evolution — while duel integrity stays SF/KOF-clean.
+
+**Product ambition (not a mode list — a direction):** ship a **PvP-first** game whose long-term integrity competes with the **Street Fighter / The King of Fighters** tier: honest neutral, readable consequences, fair meters, and skill expression that holds up in tournament-style sessions. This is **not** a clone — Blood Arena wins on **its own ruleset, roster fantasy, and brand twist** in the browser. Training vs AI and relay prototypes exist to **ladder into** that duel, not to replace it. The milestones below (M0–M4, BP-##) are the engineering path toward that bar: clarity and parity before rollback-scale online and production art.
+
 ---
 
 ## 2. Work streams (parallel tracks)
@@ -31,8 +37,9 @@
 | **C. Expression** | Combos/cancels, richer supers, character-specific fantasy | `arenaActions` (frame-ish data), UI feedback, `classData` |
 | **D. Production** | Sprites, VO, stages, polish | assets + render pipeline (future) |
 | **E. Online** | Rollback netplay | `onlineNetplayStub.ts` spec + `simDeterminism.ts` audit until transport |
+| **F. Growth / upgrade** | Persistent player power & identity — **legible**, not pay-to-win combat | `fighterProgress`, `fighterProgressStorage`, `arenaResources`, `arenaSpend`, `MatchHud` spend strip, `fighterReputation` |
 
-Streams **A + B** are prerequisites for trustworthy playtests. **C** builds on log/sim discipline. **D/E** are optional product bets.
+Streams **A + B** are prerequisites for trustworthy playtests. **C** builds on log/sim discipline. **F** is the **return loop** (core hook). **D/E** are optional product bets.
 
 ---
 
@@ -140,6 +147,24 @@ flowchart TD
 | BP-27 | Design / M2 | **Round-start readability cues** — coaching copy + longer toast + SR announcement | `arenaReadabilityHints.ts`, `RoundStartOverlay.tsx` | Done |
 | BP-28 | Design / M2 | **Round-resolve causality recap** — log-derived one-liner after KO (Climax / clean / chip) + SR | `arenaRoundRecap.ts`, `ArenaScreen` match banner | Done |
 | BP-29 | Design / M2 | **Hot-seat P2 parity cue** — default P2 bindings on round-start toast + SR narration; longer toast in `local_human` | `arenaReadabilityHints.ts`, `RoundStartOverlay`, `useRoundStartAnnouncement` | Done |
+| BP-30 | Design / M2 | **Next-match rule preview** — after KO, show upcoming `matchOrdinal + 1` modifier + coaching before reset (Rhythm / T1 reinforcement) | `nextMatchRulePreview`, `ArenaScreen` match banner | Done |
+| BP-31 | Design / M2 | **Primary Rematch CTA + focus** — winner state: full-width Rematch button, auto-focus on round end, R/Esc/Enter parity text (T4) | `ArenaScreen` match banner | Done |
+| BP-32 | Design / M2 | **Live last-exchange readout** — during rounds, HUD strip parses log tail for clean / blocked / whiff / Climax (T3 honesty) | `arenaLiveExchangeReadout.ts`, `LiveExchangeReadout.tsx` | Done |
+| BP-33 | Design / M2 | **Round HP exchange totals** — post-KO numeric P1/P2 dealt & taken from sim counters (complements BP-28) | `arenaRoundHpTotals.ts`, match banner | Done |
+| BP-34 | Design / M2 | **Climax → hit chain readout** — live strip shows `Climax → clean/chip` when log order matches (T3 refinement on BP-32) | `arenaLiveExchangeReadout.ts`, `LiveExchangeReadout.tsx` | Done |
+| BP-35 | Design / M2 | **Active combo depth HUD** — when either fighter has chain depth ≥1, show P1/P2 × depth from sim (Expression pillar; complements toast) | `comboDepthReadout.ts`, `ComboDepthReadout.tsx` | Done |
+| BP-36 | Design / M2 | **Stance ribbon** — glanceable P1/P2 stance labels + SR hints near the fight (Clarity / spacing reads) | `stanceRibbonReadout.ts`, `StanceRibbonReadout.tsx` | Done |
+| BP-37 | A11y / M2 | **`prefers-reduced-motion` — card & float FX** — disable damage float, caption pop, attack pulse, evolution overlays anim; keep static/readable feedback | `globals.css` | Done |
+| BP-38 | Design / QA | **Playtest rubric in-app** — T1–T4 + anti-goals from §15.3 in a collapsible panel (`playtestRubric.ts`); **T5** + growth anti-goal added with **BP-45** | `PlaytestRubricPanel.tsx`, `ArenaScreen` | Done |
+| BP-39 | M4 / Trust | **Netplay trust readout** — relay strip shows lockstep **sim frame**, **tick ms**, and local **`compactArenaChecksum`** (Pδ prep: honest “sim is advancing” + screenshot-compare hook) | `netplayTrustReadout.ts`, `NetplayRelayStrip.tsx`, `useArenaEngine` | Done |
+| BP-40 | M4 / Trust | **Confirm backlog counter** — relay strip shows how many **`input_confirm`** rows wait for the next sequential frame (out-of-order / catch-up visibility; complements BP-39) | `netplayTrustReadout.ts`, `useArenaEngine` | Done |
+| BP-41 | Design / PvP | **Session first-to (FT) scoreboard** — locals-style **first to 3** running games for P1 vs P2 (local + relay); match-point / sudden-death copy; resets on roster or mode change | `arenaSessionScore.ts`, `MatchHud`, `useArenaEngine` | Done |
+| BP-42 | Design / PvP | **Session set lock + next set** — after first-to is reached, **no further session inflations** until **Next set**; violet **set complete** line + `startNextSessionSet` (round sim unchanged) | `arenaSessionScore.ts`, `MatchHud`, `useArenaEngine` | Done |
+| BP-43 | Design / PvP | **Set-win callout in match banner** — when the KO **also** wins the first-to session, violet line under round recap (**BP-28** stack); `matchBannerSessionSetVictoryLine`; exhibition KOs after lock stay recap-only | `arenaSessionScore.ts`, `ArenaScreen` | Done |
+| BP-44 | Design / PvP / T2 | **P2 session parity strip** — compact **first-to** + score + match point / decider / set-lock near fighter cards (`p2SessionChipSummary`) so hot-seat P2 doesn’t rely on header alone | `P2SessionParityStrip.tsx`, `arenaSessionScore.ts`, `ArenaScreen` | Done |
+| BP-45 | Design / Growth | **Upgrade path panel + T5 rubric** — collapsible **GrowthUpgradePanel** (level, W/L, wins-to-next tier, stat bonuses, resources); **T5** growth legibility + anti-goal for opaque upgrade (`playtestRubric.ts`) | `arenaGrowthReadout.ts`, `GrowthUpgradePanel.tsx`, `ArenaScreen` | Done |
+| BP-46 | Design / Growth / Trust | **Stream F ledger + identity + spend preview + T6** — `lastBoutLedger` resource honesty; unified identity + reputation in panel; `arenaSpendReadout` costs; relay **peer_meta** / **peer_checksum** / **ping** → RTT + peer career + checksum match on **NetplayRelayStrip** | `arenaActions`, `GrowthUpgradePanel`, `netplay-relay.mjs`, `useArenaEngine`, `netplayTrustReadout.ts` | Done |
+| BP-47 | Design / Expression / Trust | **Planned-upgrade slice** — desync **recovery callout** + assertive **aria-live** on relay; optional **`?netplayLabel=`** → `peer_ledger.displayLabel`; **cancel link ms** readout on **SkillBar**; **playtest worksheet** clipboard; **profile damage totals** in growth panel | `NetplayRelayStrip`, `SkillBar`, `PlaytestRubricPanel`, `playtestRubricClipboard.ts`, `GrowthUpgradePanel` | Done |
 
 ## 8. Next waves (rolling)
 
@@ -193,12 +218,13 @@ flowchart LR
 
 ## 12. Big plan — at a glance
 
-1. **Combat readability** — hot-seat parity, log discipline, juice caps (`M0–M2`, streams A/B); round start (**BP-27** + **BP-29** P2 strip) + round-over recap (**BP-28**).  
-2. **Expression** — combos, cancels, climax economy, roster data (`M3`, stream C).  
-3. **Production** — canvas layer, optional atlas URL, optional `sampleUrl` VO (`BP-09`, §9, `BP-14/20/21`).  
-4. **Online** — types + memory pair + JSON codec + WebSocket adapter + lockstep replay + checksum (`BP-08/18/19/22/23`).  
-5. **Quality bar** — Vitest + GitHub Actions CI (`BP-16/17`).  
-6. **Next major code bet** — rollback + input prediction + checksum mismatch recovery (beyond lockstep confirm queue).
+1. **Combat readability** — hot-seat parity, log discipline, juice caps (`M0–M2`, streams A/B); round start (**BP-27** + **BP-29** P2 strip) + **P2 session chip** (**BP-44**) + round-over recap (**BP-28**) + **post-round HP totals** (**BP-33**) + **next rule preview** (**BP-30**) + **Rematch CTA** (**BP-31**) + **live exchange readout** (**BP-32** + **BP-34**) + **combo depth HUD** (**BP-35**) + **stance ribbon** (**BP-36**) + **reduced-motion card FX** (**BP-37**) + **session FT score** (**BP-41**) + **set lock / next set** (**BP-42**) + **set-win banner** (**BP-43**).  
+2. **Persistent upgrade (core hook)** — stream **F**: wins → **level** + bonuses (`fighterProgress`); **resources** + between-round spend (`arenaSpend`, `MatchHud`); **reputation** / identity; all **legible** (§15.1 promise + pillar 6).  
+3. **Expression** — combos, cancels, climax economy, roster data (`M3`, stream C).  
+4. **Production** — canvas layer, optional atlas URL, optional `sampleUrl` VO (`BP-09`, §9, `BP-14/20/21`).  
+5. **Online** — types + memory pair + JSON codec + WebSocket adapter + lockstep replay + checksum (`BP-08/18/19/22/23`); relay HUD **BP-39/40** (frame + checksum + confirm backlog).  
+6. **Quality bar** — Vitest + GitHub Actions CI (`BP-16/17`).  
+7. **Next major code bet** — rollback + input prediction + **peer checksum compare** + mismatch recovery (beyond lockstep confirm queue; **BP-39** surfaces local frame + checksum; **BP-40** surfaces confirm backlog size).
 
 ## 13. Phases (rollup)
 
@@ -207,7 +233,7 @@ flowchart LR
 | **Pα** | M0–M3 combat readability + expression + CI | Shipped in prototype |
 | **Pβ** | Netplay types → wire codec → lockstep → replay → dev page → **relay + `remote`** (BP-08–26) | Shipped (relay prototype) |
 | **Pγ** | Production art: `public/audio`, atlas URL, VO polish | Partial hooks only |
-| **Pδ** | Rollback netcode, relay auth/rooms, desync UX | Not started |
+| **Pδ** | Rollback netcode, relay auth/rooms, desync UX | **BP-39/40** trust strip (frame + checksum + **confirm backlog**); peer compare TBD |
 
 **Rule of thumb:** finish **Pγ** art hooks that touch shipped UX, then invest in **Pδ** only if competitive online is a product bet.
 
@@ -220,17 +246,19 @@ This section is the **game-design contract**: what players should *feel* and *un
 | Promise | Design meaning | Shipped signal |
 |---------|----------------|----------------|
 | **Same rules, both sides** | No “PvE rules” that break in PvP | Hot-seat + dummy + relay use one reducer path |
-| **I can read why I lost** | Causality beats spectacle | Combat log, hitstop tiers, round start (**BP-27**) + round-over recap (**BP-28**) |
-| **Expression is fair** | Depth without arcane knowledge | Combo toast, cancel rings, meter/climax clarity |
-| **Juice supports reads** | FX never replaces information | `combatJuiceConfig` caps + reduced motion |
+| **I can read why I lost** | Causality beats spectacle | Combat log, hitstop tiers, round start (**BP-27**) + recap (**BP-28**) + **HP totals** (**BP-33**) |
+| **Expression is fair** | Depth without arcane knowledge | Combo toast, cancel rings, meter/climax clarity, **BP-35** chain depth HUD |
+| **Juice supports reads** | FX never replaces information | `combatJuiceConfig` caps + **BP-37** card/float evolution CSS under `prefers-reduced-motion` (+ existing arena/KO/toast rules) |
+| **I keep upgrading** | Growth is the product hook — skill *and* persistent progression | Wins → **level** + stat bumps (`fighterProgress`); **resources** + spend between rounds (`arenaSpend`); **reputation** / profile (`fighterReputation`, `fighterIdentity`) |
 
 ### 15.2 Design pillars (priority order)
 
-1. **Clarity** — range, stance, round modifier, resource tempo. If a new feature hides these, it ships behind a toggle or not at all.  
+1. **Clarity** — range, stance, round modifier, resource tempo (**BP-36** surfaces stance beside the arena). If a new feature hides these, it ships behind a toggle or not at all.  
 2. **Parity** — P2 and P1 must be able to run the same mental model (mirror HUD affordances where possible).  
 3. **Fantasy** — roster voice through climax names, stingers, future VO/art — *after* clarity holds in playtests.  
-4. **Rhythm** — match modifiers intentionally reshape risk (`MATCH_MODIFIER_CYCLE`); players should *feel* the shift in tempo, not discover it only in the log.  
-5. **Trust** — online: deterministic sim + visible desync strategy (future); local: obvious reset/rematch (**BP-27** hot-seat line).
+4. **Rhythm** — match modifiers intentionally reshape risk (`MATCH_MODIFIER_CYCLE`); players should *feel* the shift in tempo, not discover it only in the log (**BP-30** surfaces the *next* rule at round end).  
+5. **Trust** — online: deterministic sim + visible desync strategy (future); local: obvious reset/rematch (**BP-27** hot-seat line).  
+6. **Growth (persistent upgrade)** — the **return loop** must stay **readable**: where levels/resources came from, what the next spend does, and that PvP rules stay symmetric. Hide power in opaque RNG and the core hook breaks.
 
 ### 15.3 Playtest rubric (qualitative, repeatable)
 
@@ -238,19 +266,32 @@ Use in **5–10 minute** sessions; pass = 3/4 players agree.
 
 - **T1 — Rule read:** After the round-start toast, can the player state *one* risk change for this modifier without scrolling the log?  
 - **T2 — Parity:** P2 describes how climax and skills work for *their* side without asking P1 (on-screen: **BP-29** round-start P2 strip + keyboard reference).  
-- **T3 — Juice honesty:** With combat FX on, players still correctly identify whiff vs blocked vs hit *reason* (not only damage number).  
-- **T4 — Reset friction:** Rematch in ≤1 intentional action after round resolve.
+- **T3 — Juice honesty:** With combat FX on, players still correctly identify whiff vs blocked vs hit *reason* (not only damage number) — **BP-32** live strip + **BP-34** Climax→hit chain + combat log highlights.  
+- **T4 — Reset friction:** Rematch in ≤1 intentional action after round resolve (on-screen: **BP-31** Rematch button + focus; keys unchanged).  
+- **T5 — Growth legibility:** After a couple of matches, can the player name what leveled up or which resource they’re saving — without guessing? (**BP-45** panel surfaces stream F.)
+- **T6 — Meta & online honesty:** Can they repeat what each between-round spend costs and does, and (in relay) what the netplay strip says about peer career / checksum / latency — without treating it as hidden power? (**BP-46**.)
 
 ### 15.4 Anti-goals (design debt traps)
 
 - Air lanes or advanced movement **before** ground neutral reads clean in T1–T3.  
 - New characters **before** every `FighterId` climax/link teaching surface is honest in UI.  
-- Netplay rollback **before** relay lockstep proves fun in **T2** (hot-seat excellence first).
+- Netplay rollback **before** relay lockstep proves fun in **T2** (hot-seat excellence first).  
+- **Selling “upgrade” without delivery** — if progression isn’t surfaced (HUD, log, spend panel), the core hook reads hollow; keep **stream F** honest in UI.
 
 ### 15.5 Engineering ↔ design mapping
 
 - **Readability cues** → **BP-27** (`arenaReadabilityHints`, `RoundStartOverlay`).  
-- **Hot-seat parity (T2)** → **BP-29** (P2 bindings on round-start toast + `hotSeatP2ControlsSrNarration`).  
+- **Hot-seat parity (T2)** → **BP-29** (P2 bindings on round-start toast + `hotSeatP2ControlsSrNarration`) + **BP-44** (`P2SessionParityStrip` — session score at card row).  
 - **Post-KO causality (T3)** → **BP-28** (`arenaRoundRecap`, match banner recap line).  
-- **Modifier fantasy** → `matchModifiers` + log lines + BP-27 lead/coaching.  
-- **Online trust** → BP-25/26 + future Pδ desync UX.
+- **Modifier fantasy / rhythm** → `matchModifiers` + log lines + BP-27 lead/coaching + **BP-30** next-rule preview after KO.  
+- **Online trust** → BP-25/26 + **BP-39** + **BP-40** + **BP-46** (`netplayTrustReadout` — lockstep frame + tick + checksum + **pending `input_confirm` backlog** + peer career / RTT / peer checksum compare on relay strip) + future Pδ recovery UX.  
+- **Reset friction (T4)** → **BP-31** (Rematch button + focus in match banner).  
+- **Mid-round causality (T3)** → **BP-32** + **BP-34** (`lastLiveExchangeReadout` — includes Climax→damage chain when the log order matches).  
+- **Post-round numbers** → **BP-33** (`roundHpExchangeTotals` — P1/P2 dealt & taken from `matchPlayerDamage*`).  
+- **Expression / combo clarity** → **BP-35** (`activeComboDepthSummary`, next to live exchange strip).  
+- **Stance clarity** → **BP-36** (`stanceRibbonCopy`, beside live exchange strip).  
+- **Motion accessibility** → **BP-37** (`globals.css` — card damage float, evolution flashes, attack pulse).  
+- **Playtest discipline** → **BP-38** + **BP-45** + **BP-46** (`playtestRubric.ts` T1–T6 + `GrowthUpgradePanel` — growth legibility + meta/online honesty).  
+- **Competitive session clarity (locals)** → **BP-41** + **BP-42** (`arenaSessionScore.ts` — first-to-N, match point, **set complete lock**, **Next set** button in `MatchHud`).  
+- **Set win at KO (banner)** → **BP-43** (`matchBannerSessionSetVictoryLine` — same moment as round recap when the round decided the set).  
+- **Persistent upgrade / growth** → **stream F** (`fighterProgress`, `arenaResources`, `arenaSpend`, `MatchHud` meta, `fighterReputation`).

@@ -4,7 +4,9 @@
 
 **Audience:** design + engineering  
 **North star:** PvP-first, **readable** exchanges, then **spectacle** that does not fight clarity.  
-**Reference bar:** Street Fighter / The King of Fighters **feel** (weight, climax, character fantasy) — adapted to a **browser, hot-seat–first** prototype.
+**Core hook:** players **keep upgrading themselves** — persistent **level/resources/reputation** (stream **F** in the master plan) with **legible** power, not opaque RNG.  
+**Reference bar:** Street Fighter / The King of Fighters **feel** (weight, climax, character fantasy) — adapted to a **browser, hot-seat–first** prototype.  
+**Ambition:** over time, compete at the **same tier of 1v1 integrity** (neutral honesty, execution, long-term skill) as SF/KOF — as **Blood Arena**, not a clone: our modifiers, roster voice, and brand twist are the product bet.
 
 ---
 
@@ -14,9 +16,10 @@
 |--------|--------|-----------|
 | **Readability** | Players parse range, stance, tempo, modifiers at a glance | No VFX that hides hurtboxes / timing |
 | **Fair PvP** | Same systems for both humans; AI obeys kit rules | No pay-to-win combat knobs |
+| **Growth** | Persistent upgrade is the return loop — wins, resources, rep | Power sources stay **explained** in UI + log (stream F) |
 | **Spectacle (later)** | Hit weight, KO beats, supers — **after** clarity holds | Juice is tunable in one place (`combatJuiceConfig.ts`) |
 
-**Deeper framing:** player promises, full pillar stack (Clarity → … → Trust), repeatable playtest rubric **T1–T4**, and anti-goals are in [`BLOOD_ARENA_MASTER_PLAN.md`](./BLOOD_ARENA_MASTER_PLAN.md) **§15**. Round-start coaching + SR: **BP-27**; hot-seat **T2** P2 key strip + narration: **BP-29**; round-over recap: **BP-28** (`arenaRoundRecap.ts`).
+**Deeper framing:** player promises, full pillar stack (Clarity → … → Trust), repeatable playtest rubric **T1–T4**, and anti-goals are in [`BLOOD_ARENA_MASTER_PLAN.md`](./BLOOD_ARENA_MASTER_PLAN.md) **§15**. Round-start coaching + SR: **BP-27**; hot-seat **T2** P2 key strip + narration: **BP-29**; **T2** session at cards: **BP-44** (`P2SessionParityStrip`); round-over recap: **BP-28** (`arenaRoundRecap.ts`); **post-round HP totals**: **BP-33** (`arenaRoundHpTotals.ts`); **next rule after KO**: **BP-30** (`nextMatchRulePreview`); **T4** Rematch button + focus: **BP-31** (`ArenaScreen`); **T3** live exchange strip: **BP-32** / **BP-34** (`arenaLiveExchangeReadout.ts`). **Expression:** **BP-35** combo depth HUD (`comboDepthReadout.ts`). **Clarity (stance):** **BP-36** (`stanceRibbonReadout.ts`). **A11y:** **BP-37** (`globals.css` — `prefers-reduced-motion` on card/float FX). **QA:** **BP-38** + **BP-45** (`playtestRubric.ts` T1–T5 + `GrowthUpgradePanel.tsx`). **Online trust (relay):** **BP-39** (`netplayTrustReadout.ts` + `NetplayRelayStrip.tsx` — lockstep frame + tick + local checksum) + **BP-40** (confirm backlog counter when confirms queue ahead of the sim). **PvP session (locals):** **BP-41** + **BP-42** (`arenaSessionScore.ts` + `MatchHud` — first-to-3, match point / decider, **set complete** + **Next set**) + **BP-43** (set-winning KO line in **match banner** under recap).
 
 ---
 
@@ -59,8 +62,8 @@
 ## Metrics (prototype-friendly)
 
 - **Time-to-read:** new player states what the **round rule** is without scrolling log (aligns with master plan **T1**; see **§15.3**).  
-- **Reset friction:** rematch ≤ 1 intent (already: R / Esc / Enter) (**T4**).  
-- **Clarity under juice:** with hitstop on, players still report **correct** whiff vs hit reasons in playtest prompts.
+- **Reset friction:** rematch ≤ 1 intent — **Rematch** button + focus when the round ends; keys unchanged R / Esc / Enter (**T4**, **BP-31**).  
+- **Clarity under juice (T3):** with hitstop on, players still report **correct** whiff vs hit reasons — **BP-32** / **BP-34** last-exchange strip (incl. Climax→hit) + log **Highlights** filter.
 
 ---
 

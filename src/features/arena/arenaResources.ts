@@ -64,6 +64,29 @@ export function addArenaResources(
   };
 }
 
+const RESOURCE_KEYS: (keyof ArenaResources)[] = [
+  "credits",
+  "ironheart",
+  "bloodChits",
+  "lumens",
+  "scrap",
+  "parts",
+];
+
+/** Compact “+2 ironheart · +15 credits” line for growth / ledger UI. */
+export function formatResourceDeltaBetween(
+  before: ArenaResources,
+  after: ArenaResources,
+): string {
+  const parts: string[] = [];
+  for (const k of RESOURCE_KEYS) {
+    const d = after[k] - before[k];
+    if (d === 0) continue;
+    parts.push(`${d > 0 ? "+" : ""}${d} ${k}`);
+  }
+  return parts.length > 0 ? parts.join(" · ") : "No bridge currency change.";
+}
+
 /** Exported for UI; win bundle uses the same base credit line. */
 export const WIN_CREDIT_BASE = 15;
 

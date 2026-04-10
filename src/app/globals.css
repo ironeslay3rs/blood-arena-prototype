@@ -307,4 +307,31 @@ body {
     animation: none;
     opacity: 1;
   }
+
+  /* Card damage numbers, captions, attack pulse, evolution flashes (BP-37) */
+  .combat-damage-float,
+  .combat-float-caption {
+    animation: none;
+    opacity: 1;
+    transform: none;
+  }
+
+  .combat-attack-pulse {
+    animation: none;
+  }
+
+  .evolution-first-hit-flash {
+    animation: none;
+    opacity: 1;
+  }
+
+  .evolution-heal-pulse {
+    animation: none;
+    box-shadow: none;
+  }
+
+  .evolution-shield-crack-overlay {
+    animation: none;
+    opacity: 0.85;
+  }
 }

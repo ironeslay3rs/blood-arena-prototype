@@ -31,6 +31,9 @@ type SkillBarProps = {
   linkWindowOpen?: boolean;
   /** Per-roster: which slots get the link ring (defaults: all on). */
   cancelLinkRoutes?: CancelLinkRoutes;
+  /** When both set, shows remaining cancel-link window in ms (BP-47). */
+  arenaNowMs?: number;
+  cancelWindowUntilMs?: number;
 };
 
 function CooldownHint({ ms }: { ms: number }) {
@@ -60,6 +63,8 @@ export function SkillBar({
   onClimax,
   linkWindowOpen = false,
   cancelLinkRoutes = DEFAULT_CANCEL_LINK_ROUTES,
+  arenaNowMs,
+  cancelWindowUntilMs,
 }: SkillBarProps) {
   const cd = player.cooldowns;
   const linkRingClass =
@@ -123,6 +128,21 @@ export function SkillBar({
           <p className="text-[10px] leading-snug text-zinc-500 dark:text-zinc-500">
             P2 numpad alt: 4/6 move · 8 dash · 5 attack · * Climax · 0 block ·
             7/9 skills — link text under P2 card when active
+          </p>
+        ) : null}
+        {typeof arenaNowMs === "number" &&
+        typeof cancelWindowUntilMs === "number" &&
+        cancelWindowUntilMs > arenaNowMs ? (
+          <p
+            className="rounded-md border border-emerald-600/45 bg-emerald-950/35 px-2 py-1.5 text-[11px] font-medium text-emerald-100"
+            role="status"
+            aria-label="Cancel link window remaining"
+          >
+            Cancel link window:{" "}
+            <span className="tabular-nums">
+              {Math.max(0, Math.ceil(cancelWindowUntilMs - arenaNowMs))}ms
+            </span>{" "}
+            left — chain dash or skills after your clean hit
           </p>
         ) : null}
       </div>

@@ -4,6 +4,10 @@
  */
 
 import type { MatchModifierId, OpponentControllerKind } from "./arenaTypes";
+import {
+  matchModifierForOrdinal,
+  matchModifierShortLabel,
+} from "./matchModifiers";
 
 export type RoundStartReadabilityCue = {
   /** Matches the rule chip — reinforces the modifier name. */
@@ -108,4 +112,30 @@ export function roundStartReadabilityAnnouncement(args: {
   }
   parts.push(`${args.modeLabel}, ${args.tempoLabel}.`);
   return parts.join(" ");
+}
+
+/** Shown when a round just ended — the rule that will apply after the next reset (BP-30). */
+export type NextMatchRulePreview = {
+  nextModifier: MatchModifierId;
+  headline: string;
+  coachingLine: string;
+  srAnnouncement: string;
+};
+
+/**
+ * While `winner` is set, `matchOrdinal` is still the match that finished; the next spawn uses
+ * `matchOrdinal + 1`. Surfaces that upcoming modifier so players can pivot before reset (§15.2 Rhythm).
+ */
+export function nextMatchRulePreview(
+  finishedMatchOrdinal: number,
+): NextMatchRulePreview {
+  const nextModifier = matchModifierForOrdinal(finishedMatchOrdinal + 1);
+  const label = matchModifierShortLabel(nextModifier);
+  const { lead, coachingLine } = modifierCoaching(nextModifier);
+  return {
+    nextModifier,
+    headline: `Next match: ${label}`,
+    coachingLine: `${lead}. ${coachingLine}`,
+    srAnnouncement: `After you reset, the next match rule will be ${label}. ${lead}. ${coachingLine}`,
+  };
 }

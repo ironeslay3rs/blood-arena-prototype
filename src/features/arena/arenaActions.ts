@@ -63,6 +63,7 @@ import {
 import {
   addArenaResources,
   buildWinResourceRewards,
+  formatResourceDeltaBetween,
   rollLossSalvage,
 } from "./arenaResources";
 import {
@@ -626,7 +627,15 @@ function evaluateWinner(state: ArenaState): ArenaState {
       `Consequence: next match max HP −${nextPenalty} (cap ${LOSS_STREAK_ABSOLUTE_HP_CAP}).`,
     );
     const salvage = rollLossSalvage(state);
-    s = { ...s, resources: salvage.resources };
+    const resourceLine = formatResourceDeltaBetween(
+      state.resources,
+      salvage.resources,
+    );
+    s = {
+      ...s,
+      resources: salvage.resources,
+      lastBoutLedger: { result: "loss", resourceLine },
+    };
     for (const line of salvage.logLines) {
       s = withLog(s, line);
     }
@@ -640,6 +649,10 @@ function evaluateWinner(state: ArenaState): ArenaState {
       winStreakRewardMultiplier(nextStreak),
     );
     const nextResources = addArenaResources(state.resources, delta);
+    const winResourceLine = formatResourceDeltaBetween(
+      state.resources,
+      nextResources,
+    );
     let s: ArenaState = {
       ...state,
       combatTempo: clampCombatTempo(state.combatTempo + 1),
@@ -649,6 +662,7 @@ function evaluateWinner(state: ArenaState): ArenaState {
       resources: nextResources,
       pendingHpPenalty: 0,
       winStreak: nextStreak,
+      lastBoutLedger: { result: "win", resourceLine: winResourceLine },
     };
     s = withLog(
       s,
@@ -1315,6 +1329,7 @@ export function arenaReducer(
           resources: state.resources,
           pendingHpPenalty: state.pendingHpPenalty,
           lastMatchResult: null,
+          lastBoutLedger: null,
           fighterProgress: state.fighterProgress,
           nextMatchHpBonus: state.nextMatchHpBonus,
           nextMatchAttackBonus: state.nextMatchAttackBonus,
@@ -1333,6 +1348,7 @@ export function arenaReducer(
           resources: state.resources,
           pendingHpPenalty: state.pendingHpPenalty,
           lastMatchResult: null,
+          lastBoutLedger: null,
           fighterProgress: state.fighterProgress,
           nextMatchHpBonus: state.nextMatchHpBonus,
           nextMatchAttackBonus: state.nextMatchAttackBonus,

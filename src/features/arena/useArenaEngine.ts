@@ -9,7 +9,10 @@ import {
   useState,
 } from "react";
 import { arenaReducer } from "./arenaActions";
-import { NETPLAY_NEUTRAL_INPUT_FRAME } from "./arenaNetplayLockstep";
+import {
+  compactArenaChecksum,
+  NETPLAY_NEUTRAL_INPUT_FRAME,
+} from "./arenaNetplayLockstep";
 import { ensurePlayerFighterProfile } from "./fighterProfileEnsure";
 import { loadFighterProfiles, saveFighterProfiles } from "./fighterProfileStorage";
 import { createInitialArenaState } from "./initialArenaState";
@@ -17,6 +20,7 @@ import { loadArenaResources, saveArenaResources } from "./arenaResourcesStorage"
 import { loadFighterProgress, saveFighterProgress } from "./fighterProgressStorage";
 import { loadResourceFocus, saveResourceFocus } from "./resourceFocusStorage";
 import { loadWinStreak, saveWinStreak } from "./winStreakStorage";
+import { ARENA_SESSION_FIRST_TO } from "./arenaSessionScore";
 import { parseRelayDownlink } from "./netplayRelayClientMessages";
 import {
   buildOpponentInput,
@@ -89,6 +93,37 @@ export function useArenaEngine() {
     slot: 0 | 1;
     error?: string;
   }>({ status: "idle", slot: 0 });
+
+  /** Last sim frame applied from relay `input_confirm` queue (remote only). */
+  const [netplayLockstepFrame, setNetplayLockstepFrame] = useState(0);
+
+  /** `input_confirm` rows waiting for the next sequential frame (remote only). */
+  const [netplayPendingConfirmCount, setNetplayPendingConfirmCount] =
+    useState(0);
+
+  const [netplayPeerCareer, setNetplayPeerCareer] = useState<{
+    wins: number;
+    level: number;
+    displayLabel?: string;
+  } | null>(null);
+  const [netplayRttMs, setNetplayRttMs] = useState<number | null>(null);
+  const [peerChecksumAligned, setPeerChecksumAligned] = useState<
+    boolean | null
+  >(null);
+
+  const localChecksumByFrameRef = useRef<Map<number, string>>(new Map());
+  const peerChecksumByFrameRef = useRef<Map<number, string>>(new Map());
+  const netplayPingIntervalRef = useRef<ReturnType<typeof setInterval> | null>(
+    null,
+  );
+
+  /** PvP session games won (local + relay); reset on roster/mode change — BP-41. */
+  const [sessionRoundWins, setSessionRoundWins] = useState<[number, number]>([
+    0, 0,
+  ]);
+  /** One increment per round end — keyed by `logSeq` (Strict Mode–safe). */
+  const lastSessionCountLogSeqRef = useRef<number>(-1);
+  const sessionRoundWinsRef = useRef<[number, number]>([0, 0]);
 
   const progressSnapshotRef = useRef<string | null>(null);
   const progressHydratedRef = useRef(false);
@@ -171,6 +206,37 @@ export function useArenaEngine() {
     arenaStateRef.current = state;
   });
 
+  useLayoutEffect(() => {
+    sessionRoundWinsRef.current = sessionRoundWins;
+  }, [sessionRoundWins]);
+
+  useLayoutEffect(() => {
+    if (state.winner == null) return;
+    const [a, b] = sessionRoundWinsRef.current;
+    if (a >= ARENA_SESSION_FIRST_TO || b >= ARENA_SESSION_FIRST_TO) return;
+    const seq = state.logSeq;
+    if (lastSessionCountLogSeqRef.current === seq) return;
+    lastSessionCountLogSeqRef.current = seq;
+    const w = state.winner;
+    queueMicrotask(() => {
+      setSessionRoundWins(([pa, pb]) =>
+        w === "player" ? [pa + 1, pb] : [pa, pb + 1],
+      );
+    });
+  }, [state.winner, state.logSeq]);
+
+  useEffect(() => {
+    queueMicrotask(() => {
+      setSessionRoundWins([0, 0]);
+      sessionRoundWinsRef.current = [0, 0];
+      lastSessionCountLogSeqRef.current = -1;
+    });
+  }, [
+    state.opponentController,
+    state.playerFighter.id,
+    state.enemyFighter.id,
+  ]);
+
   const keysRef = useRef<KeysHeld>({
     left: false,
     right: false,
@@ -184,6 +250,8 @@ export function useArenaEngine() {
   });
 
   const netplaySlotRef = useRef<0 | 1>(0);
+  /** Optional short name for relay `peer_ledger` — set from `?netplayLabel=` (max 24 chars). */
+  const netplaySelfDisplayLabelRef = useRef("");
   const netplayPrevP0Ref = useRef(NETPLAY_NEUTRAL_INPUT_FRAME);
   const netplayPrevP1Ref = useRef(NETPLAY_NEUTRAL_INPUT_FRAME);
   const netplayP0ButtonsRef = useRef(0);
@@ -192,28 +260,48 @@ export function useArenaEngine() {
   const pendingConfirmsRef = useRef(new Map<number, InputConfirmMessage>());
   const wsRef = useRef<WebSocket | null>(null);
 
-  const resetNetplayLockstepTracking = () => {
+  const resetNetplayLockstepRefs = () => {
     netplayLastFrameRef.current = 0;
     pendingConfirmsRef.current = new Map();
     netplayPrevP0Ref.current = NETPLAY_NEUTRAL_INPUT_FRAME;
     netplayPrevP1Ref.current = NETPLAY_NEUTRAL_INPUT_FRAME;
     netplayP0ButtonsRef.current = 0;
     netplayP1ButtonsRef.current = 0;
+    localChecksumByFrameRef.current.clear();
+    peerChecksumByFrameRef.current.clear();
+  };
+
+  /** Refs + UI frame counter — use outside `useEffect` (handlers, `resetMatch`). */
+  const resetNetplayLockstepTracking = () => {
+    resetNetplayLockstepRefs();
+    setNetplayLockstepFrame(0);
+    setNetplayPendingConfirmCount(0);
   };
 
   useLayoutEffect(() => {
     try {
       const p = new URLSearchParams(window.location.search);
       netplaySlotRef.current = p.get("netplaySlot") === "1" ? 1 : 0;
+      netplaySelfDisplayLabelRef.current =
+        p
+          .get("netplayLabel")
+          ?.trim()
+          .replace(/[\r\n\u0000]/g, "")
+          .slice(0, 24) ?? "";
     } catch {
       netplaySlotRef.current = 0;
+      netplaySelfDisplayLabelRef.current = "";
     }
     setRemoteRelay((r) => ({ ...r, slot: netplaySlotRef.current }));
   }, []);
 
   useEffect(() => {
     if (state.opponentController === "remote") {
-      resetNetplayLockstepTracking();
+      resetNetplayLockstepRefs();
+      queueMicrotask(() => {
+        setNetplayLockstepFrame(0);
+        setNetplayPendingConfirmCount(0);
+      });
     }
   }, [state.opponentController]);
 
@@ -258,6 +346,12 @@ export function useArenaEngine() {
         dispatch({ type: "SET_RESOURCE_FOCUS", focus }),
       setCombatStance: (fighterIdx: 0 | 1, stance: CombatStanceId) =>
         dispatch({ type: "SET_COMBAT_STANCE", fighterIdx, stance }),
+      /** Clears first-to session games after a set win (BP-42); rounds keep working. */
+      startNextSessionSet: () => {
+        sessionRoundWinsRef.current = [0, 0];
+        lastSessionCountLogSeqRef.current = -1;
+        setSessionRoundWins([0, 0]);
+      },
     }),
     [],
   );
@@ -503,6 +597,14 @@ export function useArenaEngine() {
     if (state.opponentController !== "remote") {
       wsRef.current?.close();
       wsRef.current = null;
+      resetNetplayLockstepRefs();
+      queueMicrotask(() => {
+        setNetplayPeerCareer(null);
+        setPeerChecksumAligned(null);
+        setNetplayRttMs(null);
+        setNetplayLockstepFrame(0);
+        setNetplayPendingConfirmCount(0);
+      });
       setRemoteRelay({
         status: "idle",
         slot: netplaySlotRef.current,
@@ -543,6 +645,8 @@ export function useArenaEngine() {
         netplayPrevP1Ref.current = p1;
         netplayLastFrameRef.current = want;
       }
+      setNetplayLockstepFrame(netplayLastFrameRef.current);
+      setNetplayPendingConfirmCount(pendingConfirmsRef.current.size);
     };
 
     setRemoteRelay({
@@ -562,6 +666,13 @@ export function useArenaEngine() {
         slot: netplaySlotRef.current,
         error: undefined,
       });
+      if (netplayPingIntervalRef.current != null) {
+        clearInterval(netplayPingIntervalRef.current);
+      }
+      netplayPingIntervalRef.current = setInterval(() => {
+        if (cancelled || ws.readyState !== WebSocket.OPEN) return;
+        ws.send(JSON.stringify({ kind: "ping", t: performance.now() }));
+      }, 2500);
     };
 
     ws.onerror = () => {
@@ -575,6 +686,9 @@ export function useArenaEngine() {
 
     ws.onclose = () => {
       if (cancelled) return;
+      setNetplayPeerCareer(null);
+      setPeerChecksumAligned(null);
+      setNetplayRttMs(null);
       setRemoteRelay((r) =>
         r.status === "open" || r.status === "connecting"
           ? {
@@ -590,6 +704,35 @@ export function useArenaEngine() {
       const raw = typeof ev.data === "string" ? ev.data : "";
       const msg = parseRelayDownlink(raw);
       if (!msg) return;
+      if (msg.kind === "pong") {
+        setNetplayRttMs(Math.round(performance.now() - msg.t));
+        return;
+      }
+      if (msg.kind === "peer_ledger") {
+        if (msg.slot !== netplaySlotRef.current) {
+          setNetplayPeerCareer({
+            wins: msg.wins,
+            level: msg.level,
+            displayLabel: msg.displayLabel,
+          });
+        }
+        return;
+      }
+      if (msg.kind === "peer_checksum") {
+        if (msg.fromSlot === netplaySlotRef.current) return;
+        const peers = peerChecksumByFrameRef.current;
+        peers.set(msg.frame, msg.checksum);
+        while (peers.size > 80) {
+          const oldest = peers.keys().next().value;
+          if (oldest === undefined) break;
+          peers.delete(oldest);
+        }
+        const localHex = localChecksumByFrameRef.current.get(msg.frame);
+        if (localHex != null) {
+          setPeerChecksumAligned(localHex === msg.checksum);
+        }
+        return;
+      }
       if (msg.kind === "hello") {
         netplaySlotRef.current = msg.slot;
         setRemoteRelay((r) => ({ ...r, slot: msg.slot }));
@@ -636,15 +779,75 @@ export function useArenaEngine() {
 
     return () => {
       cancelled = true;
+      if (netplayPingIntervalRef.current != null) {
+        clearInterval(netplayPingIntervalRef.current);
+        netplayPingIntervalRef.current = null;
+      }
       ws.close();
       wsRef.current = null;
     };
   }, [state.opponentController]);
+
+  useEffect(() => {
+    if (state.opponentController !== "remote") return;
+    const f = netplayLockstepFrame;
+    if (f <= 0) return;
+    const hex = compactArenaChecksum(state);
+    const locals = localChecksumByFrameRef.current;
+    locals.set(f, hex);
+    while (locals.size > 80) {
+      const oldest = locals.keys().next().value;
+      if (oldest === undefined) break;
+      locals.delete(oldest);
+    }
+    const ws = wsRef.current;
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(
+        JSON.stringify({ kind: "peer_checksum", frame: f, checksum: hex }),
+      );
+    }
+    const peerHex = peerChecksumByFrameRef.current.get(f);
+    if (peerHex !== undefined) {
+      setPeerChecksumAligned(peerHex === hex);
+    }
+  }, [state, netplayLockstepFrame, state.opponentController]);
+
+  const peerCareerWins =
+    state.fighterProgress[state.playerFighter.id]?.wins ?? 0;
+  const peerCareerLevel =
+    state.fighterProgress[state.playerFighter.id]?.level ?? 1;
+
+  useEffect(() => {
+    if (state.opponentController !== "remote" || remoteRelay.status !== "open")
+      return;
+    const ws = wsRef.current;
+    if (!ws || ws.readyState !== WebSocket.OPEN) return;
+    const label = netplaySelfDisplayLabelRef.current;
+    ws.send(
+      JSON.stringify({
+        kind: "player_meta",
+        level: peerCareerLevel,
+        wins: peerCareerWins,
+        ...(label.length > 0 ? { displayLabel: label } : {}),
+      }),
+    );
+  }, [
+    state.opponentController,
+    remoteRelay.status,
+    peerCareerLevel,
+    peerCareerWins,
+  ]);
 
   return {
     state,
     actions,
     remoteRelay,
     remoteRelayConfigured,
+    netplayLockstepFrame,
+    netplayPendingConfirmCount,
+    sessionRoundWins,
+    netplayPeerCareer,
+    netplayRttMs,
+    peerChecksumAligned,
   };
 }

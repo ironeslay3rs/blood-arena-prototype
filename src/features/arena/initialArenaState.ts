@@ -7,6 +7,7 @@ import type {
   FighterProgressMap,
   FighterProfile,
   FighterState,
+  LastBoutLedger,
   MatchResult,
   OpponentControllerKind,
   ResourceFocusId,
@@ -38,6 +39,7 @@ export type ArenaProgressCarry = {
   resources?: ArenaResources;
   pendingHpPenalty?: number;
   lastMatchResult?: MatchResult | null;
+  lastBoutLedger?: LastBoutLedger | null;
   fighterProgress?: FighterProgressMap;
   /** Applied on this spawn, then zeroed in returned state. */
   nextMatchHpBonus?: number;
@@ -69,6 +71,7 @@ export function createInitialArenaState(
 
   const pending = carry?.pendingHpPenalty ?? 0;
   const lastMatchResult = carry?.lastMatchResult ?? null;
+  const lastBoutLedger = carry?.lastBoutLedger ?? null;
   const fighterProgress =
     carry?.fighterProgress ?? createDefaultFighterProgress();
   let resources = mergeArenaResources(carry?.resources);
@@ -147,6 +150,7 @@ export function createInitialArenaState(
     nowMs: 0,
     resources,
     lastMatchResult,
+    lastBoutLedger,
     /** Carried until a win clears it; applied to spawn max HP above. */
     pendingHpPenalty: pending,
     fighterProgress,
@@ -197,6 +201,7 @@ export function resetArenaWithPlayerClass(
       resources: state.resources,
       pendingHpPenalty: state.pendingHpPenalty,
       lastMatchResult: null,
+      lastBoutLedger: null,
       fighterProgress: state.fighterProgress,
       nextMatchHpBonus: state.nextMatchHpBonus,
       nextMatchAttackBonus: state.nextMatchAttackBonus,
@@ -220,6 +225,7 @@ export function rematchKeepingRoster(state: ArenaState): ArenaState {
     resources: state.resources,
     pendingHpPenalty: state.pendingHpPenalty,
     lastMatchResult: null,
+    lastBoutLedger: state.lastBoutLedger,
     fighterProgress: state.fighterProgress,
     nextMatchHpBonus: state.nextMatchHpBonus,
     nextMatchAttackBonus: state.nextMatchAttackBonus,

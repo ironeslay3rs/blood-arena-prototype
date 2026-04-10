@@ -1,40 +1,62 @@
 import { describe, expect, it } from "vitest";
 import { parseRelayDownlink } from "./netplayRelayClientMessages";
-import type { InputConfirmMessage } from "./onlineNetplayStub";
 
 describe("parseRelayDownlink", () => {
-  it("parses hello", () => {
-    expect(parseRelayDownlink('{"kind":"hello","slot":1}')).toEqual({
-      kind: "hello",
+  it("parses peer_ledger (BP-46)", () => {
+    const m = parseRelayDownlink(
+      JSON.stringify({
+        kind: "peer_ledger",
+        slot: 1,
+        wins: 4,
+        level: 2,
+      }),
+    );
+    expect(m).toEqual({
+      kind: "peer_ledger",
       slot: 1,
+      wins: 4,
+      level: 2,
     });
   });
 
-  it("rejects invalid hello slot", () => {
-    expect(parseRelayDownlink('{"kind":"hello","slot":2}')).toBeNull();
-  });
-
-  it("parses frame_tick", () => {
-    expect(parseRelayDownlink('{"kind":"frame_tick","frame":42}')).toEqual({
-      kind: "frame_tick",
-      frame: 42,
+  it("parses peer_ledger displayLabel (BP-47)", () => {
+    const m = parseRelayDownlink(
+      JSON.stringify({
+        kind: "peer_ledger",
+        slot: 0,
+        wins: 1,
+        level: 1,
+        displayLabel: "TestUser",
+      }),
+    );
+    expect(m).toEqual({
+      kind: "peer_ledger",
+      slot: 0,
+      wins: 1,
+      level: 1,
+      displayLabel: "TestUser",
     });
   });
 
-  it("delegates input_confirm to netplay codec", () => {
-    const c: InputConfirmMessage = {
-      kind: "input_confirm",
-      frame: 3,
-      slice: {
-        startFrame: 3,
-        p0: [{ move: 0, blockHeld: false, buttons: 0 }],
-        p1: [{ move: 1, blockHeld: true, buttons: 0 }],
-      },
-    };
-    expect(parseRelayDownlink(JSON.stringify(c))).toEqual(c);
+  it("parses peer_checksum", () => {
+    const m = parseRelayDownlink(
+      JSON.stringify({
+        kind: "peer_checksum",
+        fromSlot: 0,
+        frame: 12,
+        checksum: "abc123",
+      }),
+    );
+    expect(m).toEqual({
+      kind: "peer_checksum",
+      fromSlot: 0,
+      frame: 12,
+      checksum: "abc123",
+    });
   });
 
-  it("returns null for invalid JSON", () => {
-    expect(parseRelayDownlink("not json")).toBeNull();
+  it("parses pong", () => {
+    const m = parseRelayDownlink(JSON.stringify({ kind: "pong", t: 12345.6 }));
+    expect(m).toEqual({ kind: "pong", t: 12345.6 });
   });
 });

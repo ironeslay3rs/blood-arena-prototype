@@ -3,6 +3,11 @@
 import type { CSSProperties } from "react";
 import Link from "next/link";
 import { COMBAT_JUICE } from "@/features/arena/combatJuiceConfig";
+import { nextMatchRulePreview } from "@/features/arena/arenaReadabilityHints";
+import {
+  roundHpExchangeSrAnnouncement,
+  roundHpExchangeTotals,
+} from "@/features/arena/arenaRoundHpTotals";
 import { roundResolveReadability } from "@/features/arena/arenaRoundRecap";
 import { useCallback, useEffect, useMemo, useRef } from "react";
 import type {
@@ -24,7 +29,11 @@ import {
   opponentModeChipClassName,
   opponentModeChipLabel,
 } from "@/features/arena/opponentModeUi";
+import { compactArenaChecksum } from "@/features/arena/arenaNetplayLockstep";
+import { matchBannerSessionSetVictoryLine } from "@/features/arena/arenaSessionScore";
 import { useArenaEngine } from "@/features/arena/useArenaEngine";
+import { NetplayRelayStrip } from "./NetplayRelayStrip";
+import { P2SessionParityStrip } from "./P2SessionParityStrip";
 import { ArenaStage } from "./ArenaStage";
 import { createCombatAudioController, vibrateCombat } from "./combatAudio";
 import { CombatLog } from "./CombatLog";
@@ -34,6 +43,11 @@ import { ArenaKeyboardReference } from "./ArenaKeyboardReference";
 import { AnnouncerStingerToast } from "./AnnouncerStingerToast";
 import { ComboChainToast } from "./ComboChainToast";
 import { FutureUpgradesPanel } from "./FutureUpgradesPanel";
+import { GrowthUpgradePanel } from "./GrowthUpgradePanel";
+import { PlaytestRubricPanel } from "./PlaytestRubricPanel";
+import { ComboDepthReadout } from "./ComboDepthReadout";
+import { StanceRibbonReadout } from "./StanceRibbonReadout";
+import { LiveExchangeReadout } from "./LiveExchangeReadout";
 import { RoundStartOverlay } from "./RoundStartOverlay";
 import { SkillBar } from "./SkillBar";
 import { useCombatFeedback } from "./useCombatFeedback";
@@ -64,7 +78,7 @@ const OPPONENT_MODES: {
     id: "remote",
     label: "Online (relay)",
     description:
-      "Lockstep: npm run relay + NEXT_PUBLIC_NETPLAY_RELAY_URL. P2 tab: ?netplaySlot=1",
+      "Lockstep: npm run relay + NEXT_PUBLIC_NETPLAY_RELAY_URL. P2: ?netplaySlot=1 · optional ?netplayLabel=YourName",
   },
 ];
 
@@ -88,8 +102,18 @@ function matchBannerText(
 }
 
 export function ArenaScreen() {
-  const { state, actions, remoteRelay, remoteRelayConfigured } =
-    useArenaEngine();
+  const {
+    state,
+    actions,
+    remoteRelay,
+    remoteRelayConfigured,
+    netplayLockstepFrame,
+    netplayPendingConfirmCount,
+    sessionRoundWins,
+    netplayPeerCareer,
+    netplayRttMs,
+    peerChecksumAligned,
+  } = useArenaEngine();
   const [player, opponent] = state.fighters;
   const controlsLocked = player.hp <= 0 || state.winner != null;
   const inputLockReason: "round_over" | "knockout" | null = state.winner != null
@@ -112,6 +136,23 @@ export function ArenaScreen() {
 
   const { combatFeedbackEnabled, toggleCombatFeedback } = useSfxPreference();
 
+  const rematchButtonRef = useRef<HTMLButtonElement>(null);
+  const prevWinnerForFocusRef = useRef<FighterRole | null>(null);
+
+  useEffect(() => {
+    if (state.winner == null) {
+      prevWinnerForFocusRef.current = null;
+      return;
+    }
+    if (prevWinnerForFocusRef.current === null) {
+      const id = window.requestAnimationFrame(() => {
+        rematchButtonRef.current?.focus();
+      });
+      prevWinnerForFocusRef.current = state.winner;
+      return () => window.cancelAnimationFrame(id);
+    }
+  }, [state.winner]);
+
   const audioUnlockedRef = useRef(false);
   const unlockAudioOnGesture = useCallback(() => {
     if (audioUnlockedRef.current) return;
@@ -129,6 +170,20 @@ export function ArenaScreen() {
     if (state.winner == null) return null;
     return roundResolveReadability(state.winner, state.fighters, state.log);
   }, [state.winner, state.fighters, state.log]);
+
+  const upcomingRulePreview = useMemo(() => {
+    if (state.winner == null) return null;
+    return nextMatchRulePreview(state.matchOrdinal);
+  }, [state.winner, state.matchOrdinal]);
+
+  const roundHpTotals =
+    state.winner == null ? null : roundHpExchangeTotals(state);
+
+  const matchBannerSetVictoryLine = useMemo(() => {
+    if (state.winner == null || state.opponentController === "dummy")
+      return null;
+    return matchBannerSessionSetVictoryLine(state.winner, sessionRoundWins);
+  }, [state.winner, state.opponentController, sessionRoundWins]);
 
   useCombatSounds(
     state.log,
@@ -202,6 +257,11 @@ export function ArenaScreen() {
     } as CSSProperties;
   }, [combatFx.arena.screenShakeDurationMs]);
 
+  const netplayStateChecksum =
+    state.opponentController === "remote"
+      ? compactArenaChecksum(state)
+      : null;
+
   return (
     <main
       className="relative mx-auto flex min-h-0 w-full max-w-4xl flex-1 flex-col gap-6 px-4 py-8"
@@ -219,28 +279,17 @@ export function ArenaScreen() {
         Skip to fight
       </a>
       {state.opponentController === "remote" ? (
-        <p
-          className="rounded-lg border border-amber-600/40 bg-amber-950/25 px-3 py-2 text-xs text-amber-100"
-          role="status"
-        >
-          <span className="font-semibold">Netplay relay</span> —{" "}
-          <span className="tabular-nums">{remoteRelay.status}</span>
-          {remoteRelay.status === "open" ? (
-            <>
-              {" "}
-              · slot {remoteRelay.slot}
-              {remoteRelay.slot === 0
-                ? " (P1 keys) — open a second window with ?netplaySlot=1 for P2"
-                : " (P2 keys)"}
-            </>
-          ) : null}
-          {remoteRelay.error ? (
-            <>
-              {" "}
-              — {remoteRelay.error}
-            </>
-          ) : null}
-        </p>
+        <NetplayRelayStrip
+          status={remoteRelay.status}
+          slot={remoteRelay.slot}
+          error={remoteRelay.error}
+          lockstepFrame={netplayLockstepFrame}
+          stateChecksumHex={netplayStateChecksum}
+          pendingConfirmCount={netplayPendingConfirmCount}
+          rttMs={netplayRttMs}
+          peerCareer={netplayPeerCareer}
+          peerChecksumAligned={peerChecksumAligned}
+        />
       ) : null}
       <MatchHud
         title="Blood Arena"
@@ -264,6 +313,14 @@ export function ArenaScreen() {
         onResourceFocusChange={actions.setResourceFocus}
         combatFeedbackEnabled={combatFeedbackEnabled}
         onToggleCombatFeedback={toggleCombatFeedback}
+        sessionRoundWins={
+          state.opponentController === "dummy" ? null : sessionRoundWins
+        }
+        onNextSessionSet={
+          state.opponentController === "dummy"
+            ? undefined
+            : actions.startNextSessionSet
+        }
       />
 
       <section
@@ -288,6 +345,30 @@ export function ArenaScreen() {
             aria-label={roundRecap.srAnnouncement}
           >
             {roundRecap.causeLine}
+          </p>
+        ) : null}
+        {matchBannerSetVictoryLine != null ? (
+          <p
+            className="mt-2 rounded-md border border-violet-500/45 bg-violet-950/35 px-2.5 py-2 text-sm font-bold leading-snug text-violet-100 dark:border-violet-500/40 dark:bg-violet-950/50"
+            role="status"
+            aria-live="polite"
+          >
+            {matchBannerSetVictoryLine}
+          </p>
+        ) : null}
+        {roundHpTotals != null ? (
+          <p
+            className="mt-2 rounded-md border border-zinc-400/35 bg-zinc-900/15 px-2.5 py-1.5 text-[11px] leading-snug tabular-nums text-zinc-700 dark:border-zinc-600/45 dark:bg-zinc-950/45 dark:text-zinc-300"
+            role="note"
+            aria-label={roundHpExchangeSrAnnouncement(roundHpTotals)}
+          >
+            <span className="font-semibold text-zinc-900 dark:text-zinc-100">
+              Round HP (through hits)
+            </span>
+            {" · "}
+            P1 dealt {roundHpTotals.p1Dealt} / took {roundHpTotals.p1Taken}
+            {" · "}
+            P2 dealt {roundHpTotals.p2Dealt} / took {roundHpTotals.p2Taken}
           </p>
         ) : null}
         <div
@@ -341,9 +422,44 @@ export function ArenaScreen() {
           </p>
         ) : null}
         {state.winner != null ? (
-          <p className="mt-1 text-xs text-zinc-600 dark:text-zinc-400">
-            Reset for another round (R / Esc / Enter), or change roster below.
-          </p>
+          <div className="mt-4 flex flex-col items-center gap-2">
+            <button
+              ref={rematchButtonRef}
+              type="button"
+              className={
+                state.winner === "player"
+                  ? "w-full max-w-xs rounded-lg border border-emerald-600 bg-emerald-600 px-4 py-2.5 text-sm font-bold uppercase tracking-wide text-white shadow-md shadow-emerald-950/30 transition hover:bg-emerald-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-400 dark:border-emerald-500 dark:bg-emerald-600 dark:hover:bg-emerald-500"
+                  : "w-full max-w-xs rounded-lg border border-amber-600 bg-amber-600 px-4 py-2.5 text-sm font-bold uppercase tracking-wide text-white shadow-md shadow-amber-950/30 transition hover:bg-amber-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-400 dark:border-amber-500 dark:bg-amber-600 dark:hover:bg-amber-500"
+              }
+              aria-label="Rematch — start the next round with the same settings"
+              onClick={actions.resetMatch}
+            >
+              Rematch
+            </button>
+            <p className="text-[11px] text-zinc-600 dark:text-zinc-400">
+              Or press <span className="font-mono text-zinc-800 dark:text-zinc-200">R</span>,{" "}
+              <span className="font-mono text-zinc-800 dark:text-zinc-200">Esc</span>, or{" "}
+              <span className="font-mono text-zinc-800 dark:text-zinc-200">Enter</span> · change
+              roster below
+            </p>
+          </div>
+        ) : null}
+        {upcomingRulePreview != null ? (
+          <div
+            className="mt-3 rounded-lg border border-violet-500/35 bg-violet-950/25 px-3 py-2 text-left dark:border-violet-600/40 dark:bg-violet-950/35"
+            role="region"
+            aria-label={upcomingRulePreview.srAnnouncement}
+          >
+            <p className="text-[9px] font-bold uppercase tracking-wider text-violet-300/95">
+              After reset — upcoming rule
+            </p>
+            <p className="mt-0.5 text-xs font-semibold text-zinc-100">
+              {upcomingRulePreview.headline}
+            </p>
+            <p className="mt-1 text-[11px] leading-snug text-zinc-500 dark:text-zinc-400">
+              {upcomingRulePreview.coachingLine}
+            </p>
+          </div>
         ) : null}
       </section>
 
@@ -394,44 +510,79 @@ export function ArenaScreen() {
           onClimax={actions.useClimax}
           linkWindowOpen={p1LinkWindowOpen}
           cancelLinkRoutes={resolveCancelLinkRoutes(player.fighterId)}
+          arenaNowMs={state.nowMs}
+          cancelWindowUntilMs={player.cancelWindowUntilMs}
         />
+        {state.winner == null ? (
+          <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-stretch sm:justify-center">
+            <StanceRibbonReadout
+              p1Stance={player.combatStance}
+              p2Stance={opponent.combatStance}
+            />
+            <LiveExchangeReadout log={state.log} />
+            <ComboDepthReadout
+              p1Depth={player.comboChainDepth}
+              p2Depth={opponent.comboChainDepth}
+            />
+          </div>
+        ) : null}
       </section>
 
-      <div
-        className="grid gap-4 sm:grid-cols-2"
-        aria-label="Fighter status"
-      >
-        <FighterPanel
-          fighter={player}
-          identity={playerIdentity}
-          combatFeedback={combatFx.playerCard}
-          onCombatStanceChange={(s) => actions.setCombatStance(0, s)}
-          stanceChangeLocked={state.winner != null}
-        />
-        <FighterPanel
-          fighter={opponent}
-          combatFeedback={combatFx.opponentCard}
-          reputation={reputationForArenaFighter(state, 1)}
-          onCombatStanceChange={
-            opponent.isDummy ? undefined : (s) => actions.setCombatStance(1, s)
-          }
-          stanceChangeLocked={state.winner != null}
-          hotSeatClimax={
-            state.opponentController === "local_human" && !opponent.isDummy
-              ? {
-                  disabled: controlsLocked,
-                  onClimax: actions.opponentUseClimax,
-                  linkHint:
-                    formatLinkHintLine(opponent, p2LinkWindowOpen) ?? undefined,
-                }
-              : undefined
-          }
-        />
+      <div className="flex flex-col gap-2">
+        <div
+          className="grid gap-4 sm:grid-cols-2"
+          aria-label="Fighter status"
+        >
+          <FighterPanel
+            fighter={player}
+            identity={playerIdentity}
+            combatFeedback={combatFx.playerCard}
+            onCombatStanceChange={(s) => actions.setCombatStance(0, s)}
+            stanceChangeLocked={state.winner != null}
+          />
+          <FighterPanel
+            fighter={opponent}
+            combatFeedback={combatFx.opponentCard}
+            reputation={reputationForArenaFighter(state, 1)}
+            onCombatStanceChange={
+              opponent.isDummy ? undefined : (s) => actions.setCombatStance(1, s)
+            }
+            stanceChangeLocked={state.winner != null}
+            hotSeatClimax={
+              state.opponentController === "local_human" && !opponent.isDummy
+                ? {
+                    disabled: controlsLocked,
+                    onClimax: actions.opponentUseClimax,
+                    linkHint:
+                      formatLinkHintLine(opponent, p2LinkWindowOpen) ?? undefined,
+                  }
+                : undefined
+            }
+          />
+        </div>
+        {state.opponentController !== "dummy" ? (
+          <P2SessionParityStrip sessionRoundWins={sessionRoundWins} />
+        ) : null}
       </div>
 
       <CombatLog entries={state.log} />
 
       <ArenaKeyboardReference />
+
+      <GrowthUpgradePanel
+        fighterName={state.playerFighter.name}
+        career={playerCareer}
+        resources={state.resources}
+        identity={playerIdentity}
+        lastBoutLedger={state.lastBoutLedger}
+        winStreak={state.winStreak}
+        pendingHpPenalty={state.pendingHpPenalty}
+        nextMatchHpBonus={state.nextMatchHpBonus}
+        nextMatchAttackBonus={state.nextMatchAttackBonus}
+        peerCareer={state.opponentController === "remote" ? netplayPeerCareer : null}
+      />
+
+      <PlaytestRubricPanel />
 
       <FutureUpgradesPanel />
 

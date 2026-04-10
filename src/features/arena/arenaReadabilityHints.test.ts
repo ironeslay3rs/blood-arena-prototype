@@ -1,10 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
   hotSeatP2ControlsSrNarration,
+  nextMatchRulePreview,
   roundStartReadabilityAnnouncement,
   roundStartReadabilityCue,
 } from "./arenaReadabilityHints";
-import { MATCH_MODIFIER_CYCLE } from "./matchModifiers";
+import { MATCH_MODIFIER_CYCLE, matchModifierForOrdinal } from "./matchModifiers";
 import type { OpponentControllerKind } from "./arenaTypes";
 
 const MODES: OpponentControllerKind[] = ["dummy", "local_human", "remote"];
@@ -51,5 +52,22 @@ describe("roundStartReadabilityCue", () => {
     const n = hotSeatP2ControlsSrNarration();
     expect(n).toContain("M for Climax");
     expect(n).toContain("Numpad");
+  });
+});
+
+describe("nextMatchRulePreview (BP-30)", () => {
+  it("uses the modifier for finishedOrdinal + 1", () => {
+    for (let ord = 0; ord < 8; ord++) {
+      const p = nextMatchRulePreview(ord);
+      expect(p.nextModifier).toBe(matchModifierForOrdinal(ord + 1));
+    }
+  });
+
+  it("surfaces labels and SR copy", () => {
+    const p = nextMatchRulePreview(0);
+    expect(p.headline).toMatch(/^Next match: /);
+    expect(p.coachingLine.length).toBeGreaterThan(20);
+    expect(p.srAnnouncement).toContain("After you reset");
+    expect(p.srAnnouncement).toContain("next match rule");
   });
 });

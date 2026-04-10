@@ -9,6 +9,9 @@
  * - Server → all:    { kind: "frame_tick", frame: n }  (~60 Hz)
  * - Client → server:{ kind: "slot_input", frame, slot, input: ArenaInputFrame }
  * - Server → all:    input_confirm (same shape as netplayWireCodec)
+ * - Client → server:{ kind: "player_meta", level, wins, displayLabel? } → broadcast peer_ledger
+ * - Client → server:{ kind: "peer_checksum", frame, checksum } → broadcast (Pδ compare)
+ * - Client → server:{ kind: "ping", t } → server → client { kind: "pong", t }
  */
 
 import { WebSocketServer } from "ws";
@@ -68,6 +71,46 @@ wss.on("connection", (ws) => {
     try {
       msg = JSON.parse(buf.toString());
     } catch {
+      return;
+    }
+    if (msg?.kind === "ping" && typeof msg.t === "number") {
+      try {
+        ws.send(JSON.stringify({ kind: "pong", t: msg.t }));
+      } catch {
+        /* ignore */
+      }
+      return;
+    }
+    if (
+      msg?.kind === "player_meta" &&
+      typeof msg.level === "number" &&
+      typeof msg.wins === "number"
+    ) {
+      const ledger = {
+        kind: "peer_ledger",
+        slot,
+        level: msg.level,
+        wins: msg.wins,
+      };
+      if (typeof msg.displayLabel === "string" && msg.displayLabel.length > 0) {
+        ledger.displayLabel = String(msg.displayLabel)
+          .replace(/[\r\n\u0000]/g, "")
+          .slice(0, 24);
+      }
+      broadcast(ledger);
+      return;
+    }
+    if (
+      msg?.kind === "peer_checksum" &&
+      typeof msg.frame === "number" &&
+      typeof msg.checksum === "string"
+    ) {
+      broadcast({
+        kind: "peer_checksum",
+        fromSlot: slot,
+        frame: msg.frame,
+        checksum: msg.checksum,
+      });
       return;
     }
     if (msg?.kind !== "slot_input" || typeof msg.frame !== "number") return;

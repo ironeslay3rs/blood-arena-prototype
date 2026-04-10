@@ -168,6 +168,16 @@ export interface CombatLogEntry {
 export type MatchResult = "win" | "loss";
 
 /**
+ * Honest one-bout summary for growth UI — set when a round ends; carried across rematch
+ * until the next KO replaces it.
+ */
+export interface LastBoutLedger {
+  result: MatchResult;
+  /** Short resource swing line (bridge currencies). */
+  resourceLine: string;
+}
+
+/**
  * Black Market / Rune Trials bridge currencies (local only, no shop).
  * Faction wins tilt which buckets fill fastest; `lumens` is the Pure “crystal” placeholder.
  */
@@ -298,6 +308,8 @@ export interface ArenaState {
   resources: ArenaResources;
   /** Set when a round ends; used for HUD until reset. */
   lastMatchResult: MatchResult | null;
+  /** Last completed bout — resource honesty for stream F panel. */
+  lastBoutLedger: LastBoutLedger | null;
   /**
    * Loss consequence: total HP stripped from the player’s true max on the next spawn.
    * Consumed when a new match is created; floored at ~35% of card maxHealth.

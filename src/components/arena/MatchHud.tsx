@@ -8,6 +8,16 @@ import type {
   ResourceFocusId,
 } from "@/features/arena/arenaTypes";
 import { WIN_CREDIT_REWARD } from "@/features/arena/arenaActions";
+import {
+  ARENA_SESSION_FIRST_TO,
+  formatSessionScoreLine,
+  sessionDeciderLine,
+  sessionMatchPointCopy,
+  sessionMatchPointRole,
+  sessionSetCompleteHeadline,
+  sessionSetIsComplete,
+  sessionSetWinnerRole,
+} from "@/features/arena/arenaSessionScore";
 import { ResourceFocusToolbar } from "@/features/arena/ResourceFocusToolbar";
 import {
   BRIBE_CREDITS_COST,
@@ -43,6 +53,11 @@ type MatchHudProps = {
   /** Sound + optional vibration on hits and round start; persists in localStorage. */
   combatFeedbackEnabled?: boolean;
   onToggleCombatFeedback?: () => void;
+  /** Local / relay PvP: running session games won (hidden for training vs AI). */
+  sessionRoundWins?: [number, number] | null;
+  sessionFirstTo?: number;
+  /** After first-to is reached — zeroes session score for the next locals set (BP-42). */
+  onNextSessionSet?: () => void;
 };
 
 const TEMPO_MIN = -3;
@@ -126,7 +141,7 @@ function matchSubtitle(
   if (mode === "local_human") {
     return "Local PvP — Player 1 vs Player 2, same systems, shared screen.";
   }
-  return "Online PvP (stub) — reserved for networked play.";
+  return "Online — relay lockstep (see strip below when connected).";
 }
 
 export function MatchHud({
@@ -151,6 +166,9 @@ export function MatchHud({
   onResourceFocusChange,
   combatFeedbackEnabled = true,
   onToggleCombatFeedback,
+  sessionRoundWins = null,
+  sessionFirstTo = ARENA_SESSION_FIRST_TO,
+  onNextSessionSet,
 }: MatchHudProps) {
   const subtitle = matchSubtitle(winner, opponentController);
 
@@ -173,6 +191,22 @@ export function MatchHud({
   const tempo = clampTempoDisplay(combatTempo);
   const tempoTone = tempoPanelTone(tempo);
 
+  const sessionComplete =
+    sessionRoundWins != null &&
+    sessionSetIsComplete(sessionRoundWins, sessionFirstTo);
+  const sessionSetWin =
+    sessionRoundWins != null && sessionComplete
+      ? sessionSetWinnerRole(sessionRoundWins, sessionFirstTo)
+      : null;
+  const sessionMp =
+    sessionRoundWins != null && !sessionComplete
+      ? sessionMatchPointRole(sessionRoundWins, sessionFirstTo)
+      : null;
+  const sessionDecider =
+    sessionRoundWins != null && !sessionComplete
+      ? sessionDeciderLine(sessionRoundWins, sessionFirstTo)
+      : null;
+
   return (
     <header className="flex flex-col gap-4 border-b border-zinc-200 pb-4 dark:border-zinc-800 lg:flex-row lg:flex-wrap lg:items-start lg:justify-between">
       <div className="min-w-0 flex-1">
@@ -183,6 +217,75 @@ export function MatchHud({
           PvP-first · one shared screen · stance and spacing decide trades
         </p>
         <p className="mt-1.5 text-sm text-zinc-500">{subtitle}</p>
+        {sessionRoundWins != null ? (
+          <div
+            className={`mt-2 max-w-md rounded-lg border px-3 py-2 ${
+              sessionComplete
+                ? "border-violet-500/50 bg-violet-950/40 dark:border-violet-500/40 dark:bg-violet-950/45"
+                : "border-emerald-700/40 bg-emerald-950/30 dark:border-emerald-600/35 dark:bg-emerald-950/40"
+            }`}
+            role="status"
+            aria-live="polite"
+            aria-label={
+              sessionComplete && sessionSetWin != null
+                ? sessionSetCompleteHeadline(
+                    sessionSetWin,
+                    sessionRoundWins,
+                    sessionFirstTo,
+                  )
+                : sessionMp != null
+                  ? `${formatSessionScoreLine(sessionRoundWins, sessionFirstTo)}. ${sessionMatchPointCopy(sessionMp)}`
+                  : sessionDecider != null
+                    ? `${formatSessionScoreLine(sessionRoundWins, sessionFirstTo)}. ${sessionDecider}`
+                    : formatSessionScoreLine(sessionRoundWins, sessionFirstTo)
+            }
+          >
+            <p
+              className={`text-xs font-semibold uppercase tracking-wide ${
+                sessionComplete
+                  ? "text-violet-200/95"
+                  : "text-emerald-300/95"
+              }`}
+            >
+              Session set
+            </p>
+            <p
+              className={`mt-0.5 text-sm font-bold tabular-nums ${
+                sessionComplete ? "text-violet-50" : "text-emerald-50"
+              }`}
+            >
+              {formatSessionScoreLine(sessionRoundWins, sessionFirstTo)}
+            </p>
+            {sessionComplete && sessionSetWin != null ? (
+              <>
+                <p className="mt-1 text-sm font-semibold text-violet-100">
+                  {sessionSetCompleteHeadline(
+                    sessionSetWin,
+                    sessionRoundWins,
+                    sessionFirstTo,
+                  )}
+                </p>
+                {onNextSessionSet != null ? (
+                  <button
+                    type="button"
+                    className="mt-2 w-full rounded-md border border-violet-400/50 bg-violet-900/50 px-3 py-1.5 text-xs font-semibold text-violet-50 transition hover:bg-violet-800/60"
+                    onClick={onNextSessionSet}
+                  >
+                    Next set — reset session score
+                  </button>
+                ) : null}
+              </>
+            ) : sessionMp != null ? (
+              <p className="mt-1 text-xs font-medium text-emerald-200/95">
+                {sessionMatchPointCopy(sessionMp)}
+              </p>
+            ) : sessionDecider != null ? (
+              <p className="mt-1 text-xs font-medium text-emerald-200/95">
+                {sessionDecider}
+              </p>
+            ) : null}
+          </div>
+        ) : null}
         <div
           className="mt-2 max-w-md rounded-lg border border-amber-200/90 bg-amber-50/60 px-3 py-2 dark:border-amber-800/50 dark:bg-amber-950/35"
           aria-label="Your reputation"
