@@ -34,9 +34,12 @@ yarn-error.log*
 .env*
 !.env.example
 
-# vercel
+# vercel (local link metadata; never commit)
 .vercel
 
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# eslint
+.eslintcache

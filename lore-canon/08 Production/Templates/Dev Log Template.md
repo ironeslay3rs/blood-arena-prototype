@@ -1,0 +1,17 @@
+# PROJECT
+
+# DATE
+
+# WHAT HAPPENED
+- 
+
+# DECISIONS MADE
+- 
+
+# LOCKED RULES TO EXTRACT
+- 
+
+# NEXT 3 TASKS
+- 
+- 
+-

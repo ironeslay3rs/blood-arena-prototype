@@ -18,7 +18,7 @@ export const metadata: Metadata = {
     template: "%s · Blood Arena",
   },
   description:
-    "Hot-seat PvP fighter prototype — stance, spacing, and tempo. Optional training vs AI; readable fights first.",
+    "Street Fighter and KOF-inspired PvP fighter prototype with Evolution: Void Wars: Oblivion lore, faction history, and persistent upgrade framing.",
 };
 
 export default function RootLayout({

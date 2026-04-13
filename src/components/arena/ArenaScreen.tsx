@@ -44,6 +44,7 @@ import { AnnouncerStingerToast } from "./AnnouncerStingerToast";
 import { ComboChainToast } from "./ComboChainToast";
 import { FutureUpgradesPanel } from "./FutureUpgradesPanel";
 import { GrowthUpgradePanel } from "./GrowthUpgradePanel";
+import { LoreCodexPanel } from "./LoreCodexPanel";
 import { PlaytestRubricPanel } from "./PlaytestRubricPanel";
 import { ComboDepthReadout } from "./ComboDepthReadout";
 import { StanceRibbonReadout } from "./StanceRibbonReadout";
@@ -581,6 +582,8 @@ export function ArenaScreen() {
         nextMatchAttackBonus={state.nextMatchAttackBonus}
         peerCareer={state.opponentController === "remote" ? netplayPeerCareer : null}
       />
+
+      <LoreCodexPanel />
 
       <PlaytestRubricPanel />
 

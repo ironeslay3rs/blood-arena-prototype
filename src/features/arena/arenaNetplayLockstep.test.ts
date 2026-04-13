@@ -159,12 +159,14 @@ describe("arenaNetplayLockstep", () => {
     const raw = stringifyNetplayControlMessage(c);
     const parsed = parseNetplayControlMessage(raw);
     expect(parsed).not.toBeNull();
+    expect(parsed!.kind).toBe("input_confirm");
+    const roundtrip = parsed as InputConfirmMessage;
     const s1 = createInitialArenaState(undefined, undefined, {
       opponentController: "local_human",
     });
     const tick = NETPLAY_RECOMMENDED_TICK_MS;
     expect(compactArenaChecksum(replayInputConfirmMessages(s0, tick, [c]))).toBe(
-      compactArenaChecksum(replayInputConfirmMessages(s1, tick, [parsed!])),
+      compactArenaChecksum(replayInputConfirmMessages(s1, tick, [roundtrip])),
     );
   });
 

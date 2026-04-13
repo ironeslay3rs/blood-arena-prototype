@@ -2,14 +2,20 @@
   "name": "blood-arena-prototype",
   "version": "0.1.0",
   "private": true,
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint",
+    "lint": "eslint . --cache --cache-location .eslintcache",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "vitest run",
     "test:watch": "vitest",
-    "relay": "node scripts/netplay-relay.mjs"
+    "relay": "node scripts/netplay-relay.mjs",
+    "verify": "npm run lint && npm run typecheck && npm run test && npm run build",
+    "ci": "npm run verify"
   },
   "dependencies": {
     "next": "16.2.2",

@@ -1,0 +1,218 @@
+{
+  "main": {
+    "id": "389e3a32d0ac8e5c",
+    "type": "split",
+    "children": [
+      {
+        "id": "7330b10098e979d7",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "a590f760319a1ba9",
+            "type": "leaf",
+            "state": {
+              "type": "graph",
+              "state": {},
+              "icon": "lucide-git-fork",
+              "title": "Graph view"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "vertical"
+  },
+  "left": {
+    "id": "56d2098e75d9fa0e",
+    "type": "split",
+    "children": [
+      {
+        "id": "61e0506a42d527f5",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "84377cdf878b79eb",
+            "type": "leaf",
+            "state": {
+              "type": "file-explorer",
+              "state": {
+                "sortOrder": "alphabetical",
+                "autoReveal": false
+              },
+              "icon": "lucide-folder-closed",
+              "title": "Files"
+            }
+          },
+          {
+            "id": "257ec9adcdd98ec2",
+            "type": "leaf",
+            "state": {
+              "type": "search",
+              "state": {
+                "query": "",
+                "matchingCase": false,
+                "explainSearch": false,
+                "collapseAll": false,
+                "extraContext": false,
+                "sortOrder": "alphabetical"
+              },
+              "icon": "lucide-search",
+              "title": "Search"
+            }
+          },
+          {
+            "id": "7396ea224b408ff3",
+            "type": "leaf",
+            "state": {
+              "type": "bookmarks",
+              "state": {},
+              "icon": "lucide-bookmark",
+              "title": "Bookmarks"
+            }
+          }
+        ],
+        "currentTab": 1
+      }
+    ],
+    "direction": "horizontal",
+    "width": 298.5
+  },
+  "right": {
+    "id": "8267d827186813e3",
+    "type": "split",
+    "children": [
+      {
+        "id": "df4fe297526f17de",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "8fd9f1a71e87f790",
+            "type": "leaf",
+            "state": {
+              "type": "backlink",
+              "state": {
+                "collapseAll": false,
+                "extraContext": false,
+                "sortOrder": "alphabetical",
+                "showSearch": false,
+                "searchQuery": "",
+                "backlinkCollapsed": false,
+                "unlinkedCollapsed": true
+              },
+              "icon": "links-coming-in",
+              "title": "Backlinks"
+            }
+          },
+          {
+            "id": "03078b0de9e8d624",
+            "type": "leaf",
+            "state": {
+              "type": "outgoing-link",
+              "state": {
+                "linksCollapsed": false,
+                "unlinkedCollapsed": true
+              },
+              "icon": "links-going-out",
+              "title": "Outgoing links"
+            }
+          },
+          {
+            "id": "b0998b11cc93d87f",
+            "type": "leaf",
+            "state": {
+              "type": "tag",
+              "state": {
+                "sortOrder": "frequency",
+                "useHierarchy": true,
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-tags",
+              "title": "Tags"
+            }
+          },
+          {
+            "id": "47e6ef1464133a0e",
+            "type": "leaf",
+            "state": {
+              "type": "all-properties",
+              "state": {
+                "sortOrder": "frequency",
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-archive",
+              "title": "All properties"
+            }
+          },
+          {
+            "id": "5e5c3c28cf5a7a6e",
+            "type": "leaf",
+            "state": {
+              "type": "outline",
+              "state": {
+                "followCursor": false,
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-list",
+              "title": "Outline"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "horizontal",
+    "width": 300
+  },
+  "left-ribbon": {
+    "hiddenItems": {
+      "switcher:Open quick switcher": false,
+      "graph:Open graph view": false,
+      "canvas:Create new canvas": false,
+      "daily-notes:Open today's daily note": false,
+      "templates:Insert template": false,
+      "command-palette:Open command palette": false,
+      "bases:Create new base": false
+    }
+  },
+  "active": "257ec9adcdd98ec2",
+  "lastOpenFiles": [
+    "02 Books/Book 07/01 - Canon Extraction.md",
+    "Untitled.base",
+    "Untitled 1.base",
+    "02 Books/Book 06/01 - Canon Extraction.md",
+    "02 Books/Book 05/01 - Canon Extraction.md",
+    "02 Books/Book 04/01 - Canon Extraction.md",
+    "02 Books/Book 03/01 - Canon Extraction.md",
+    "02 Books/Book 07/02 - Cross Media Value.md",
+    "02 Books/Book 06/02 - Cross Media Value.md",
+    "02 Books/Book 05/02 - Cross Media Value.md",
+    "02 Books/Book 04/02 - Cross Media Value.md",
+    "02 Books/Book 03/02 - Cross Media Value.md",
+    "02 Books/Book 04/00 - Book 04 Full Text.md",
+    "02 Books/Book 03/00 - Book 03 Full Text.md",
+    "02 Books/Book 07/00 - Book 07 Full Text.md",
+    "02 Books/Book 06/00 - Book 06 Full Text.md",
+    "02 Books/Book 05/00 - Book 05 Full Text.md",
+    "02 Books/Book 02/00 - Book 02 Full Text.md",
+    "02 Books/Book 02/02 - Cross Media Value.md",
+    "02 Books/Book 02/01 - Canon Extraction.md",
+    "02 Books/00 - Books Home.md",
+    "02 Books/02 - Book Workflow.md",
+    "02 Books/01 - Saga Map.md",
+    "02 Books/01 - Books Hub.md",
+    "02 Books/Book 01/Outline/Book 01 Master Outline.md",
+    "02 Books/Book 01/00 - Book 01 Full Text.md",
+    "02 Books/Imports/~$olution_VoidWars_Book1_FINAL.docx",
+    "02 Books/Book 01/02 - Cross Media Value.md",
+    "02 Books/Imports/Evolution_VoidWars_Book1_FINAL 1.docx",
+    "02 Books/Imports/Evolution_VoidWars_Book7_FINAL.docx",
+    "02 Books/Imports/Evolution_VoidWars_Book6_FINAL.docx",
+    "02 Books/Imports/Evolution_VoidWars_Book5_FINAL.docx",
+    "02 Books/Imports/Evolution_VoidWars_Book4_FINAL.docx",
+    "02 Books/Imports/Evolution_VoidWars_Book3_FINAL.docx",
+    "02 Books/Imports/Evolution_VoidWars_Book2_FINAL.docx",
+    "03 Games/Black Market Rune Trials/Untitled.canvas"
+  ]
+}

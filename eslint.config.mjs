@@ -12,6 +12,8 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Obsidian / markdown lore vault — not part of the TS bundle
+    "lore-canon/**",
   ]),
 ]);
 
